@@ -19,7 +19,7 @@ class Logger:
         # 使用 after() 确保 GUI 更新在主线程中执行
         self.master.after(0, _update_log)
 
-    def update_status(self, message):
+    def status(self, message):
         """线程安全地更新状态栏消息"""
         def _update_status():
             self.status_widget.config(text=f"状态：{message}")

@@ -7,6 +7,7 @@ from pathlib import Path
 from PIL import Image
 import shutil
 import binascii
+import re
 
 def load_bundle(bundle_path: str, log):
     """
@@ -210,7 +211,6 @@ def process_bundle_replacement(bundle_path: str, image_folder: str, output_path:
             if not create_backup(bundle_path, log):
                 return False, "创建备份失败，操作已终止。"
 
-        # MODIFIED: Use the robust loader, although this mode is less likely to need it.
         env = load_bundle(bundle_path, log)
         if not env:
             return False, "无法加载目标 Bundle 文件，即使在尝试移除潜在的 CRC 补丁后也是如此。请检查文件是否损坏。"
@@ -348,14 +348,16 @@ def process_bundle_to_bundle_replacement(new_bundle_path: str, old_bundle_path: 
         log(traceback.format_exc())
         return False, f"处理过程中发生严重错误:\n{e}"
 
+# 一键更新 Mod 的核心处理函数
 def process_mod_update(old_mod_path_str: str, game_resource_dir_str: str, working_dir_str: str, enable_padding: bool, log):
     """
     自动化Mod更新流程：
     1. 根据旧版mod文件名，在游戏资源目录中寻找新版对应文件。
     2. 创建一个工作目录。
-    3. 执行 B2B 替换，生成一个未修正CRC的中间文件。
-    4. 对中间文件进行 CRC 修正。
-    5. 将最终文件重命名为新版文件名，保存在工作目录中。
+    3. 执行 B2B 替换，生成一个未修正CRC的中间文件并保存。
+    4. 复制该中间文件。
+    5. 对复制后的文件进行 CRC 修正，生成最终文件。
+    6. 两个文件（未修正CRC版和最终版）都保存在工作目录中。
     """
     try:
         log("🚀 开始一键更新流程...")
@@ -364,13 +366,18 @@ def process_mod_update(old_mod_path_str: str, game_resource_dir_str: str, workin
         base_working_dir = Path(working_dir_str)
 
         # --- 1. 解析文件名并创建工作目录 ---
+        # 文件名示例：assets-_mx-spinecharacters-ch0273_spr-_mxdependency-2024-11-18_assets_all_2997587984
         log(f"分析旧版Mod文件: {old_mod_path.name}")
         match = re.search(r'(ch\d+)', old_mod_path.name)
         if not match:
-            return False, "无法从旧版Mod文件名中解析出角色ID (例如 'ch0225')。"
+            log("无法从旧版Mod文件名中解析出角色ID。")
+            char_id = ""
+        else:
+            char_id = match.group(1)
+            log(f"角色ID: {char_id}")
         
-        char_id = match.group(1)
-        work_dir = base_working_dir / f"{char_id}_update_{Path(old_mod_path.name).stem[-4:]}"
+        # 使用旧Mod文件名（不含后缀）和角色ID创建唯一的文件夹名
+        work_dir = base_working_dir / f"update_{old_mod_path.stem}"
         work_dir.mkdir(parents=True, exist_ok=True)
         log(f"已创建工作目录: {work_dir}")
 
@@ -397,29 +404,36 @@ def process_mod_update(old_mod_path_str: str, game_resource_dir_str: str, workin
         if not old_env:
             return False, "加载旧版Mod文件失败。"
         
-        old_texture_names = {
-            obj.read().m_Name for obj in old_env.objects if obj.type.name == "Texture2D"
-        }
-        if not old_texture_names:
+        old_textures_map = {}
+        for obj in old_env.objects:
+            if obj.type.name == "Texture2D":
+                data = obj.read()
+                old_textures_map[data.m_Name] = data.image
+        
+        if not old_textures_map:
             return False, "旧版Mod文件中不包含任何 Texture2D 资源。"
-        log(f"  > 旧版Mod包含 {len(old_texture_names)} 个贴图资源。")
+        log(f"  > 旧版Mod包含 {len(old_textures_map)} 个贴图资源。")
 
         new_bundle_path = None
         for candidate_path in candidates:
             log(f"    - 正在检查: {candidate_path.name}")
-            env = load_bundle(str(candidate_path), lambda msg: None) # 使用静默加载避免日志混乱
-            if not env:
+            try:
+                env = UnityPy.load(str(candidate_path))
+                if not env:
+                    continue
+                
+                found_match = False
+                for obj in env.objects:
+                    if obj.type.name == "Texture2D":
+                        if obj.read().m_Name in old_textures_map:
+                            found_match = True
+                            break
+                if found_match:
+                    new_bundle_path = candidate_path
+                    break
+            except Exception: # 忽略无法加载的候选文件
+                log(f"    - 警告: 无法加载候选文件 {candidate_path.name}, 已跳过。")
                 continue
-            
-            found_match = False
-            for obj in env.objects:
-                if obj.type.name == "Texture2D":
-                    if obj.read().m_Name in old_texture_names:
-                        found_match = True
-                        break
-            if found_match:
-                new_bundle_path = candidate_path
-                break
         
         if not new_bundle_path:
             return False, "在所有候选文件中都未找到与旧版Mod贴图名称匹配的资源。无法确定正确的新版文件。"
@@ -429,7 +443,8 @@ def process_mod_update(old_mod_path_str: str, game_resource_dir_str: str, workin
         # --- 4. 执行 B2B 替换 ---
         log("\n--- 阶段 1: Bundle-to-Bundle 替换 ---")
         new_env = load_bundle(str(new_bundle_path), log)
-        old_textures_map = {name: data.image for name, data in zip(old_texture_names, old_env.objects) if data.type.name == "Texture2D"}
+        if not new_env:
+            return False, "加载新版文件失败。"
 
         replacement_count = 0
         for obj in new_env.objects:
@@ -448,25 +463,33 @@ def process_mod_update(old_mod_path_str: str, game_resource_dir_str: str, workin
             f.write(new_env.file.save(packer="lzma"))
         log("  > 中间文件保存成功。")
 
-        # --- 5. 执行 CRC 修正 ---
+        # --- 5. 复制中间文件并执行 CRC 修正 ---
         log("\n--- 阶段 2: CRC 修正 ---")
+        final_path = work_dir / new_bundle_path.name
+        
+        log(f"  > 正在复制 '{intermediate_path.name}' 到 '{final_path.name}' 以进行CRC修正。")
+        shutil.copy2(intermediate_path, final_path)
+        
         log(f"  > 原始文件 (用于CRC校验): {new_bundle_path.name}")
-        log(f"  > 待修正文件: {intermediate_path.name}")
-
-        is_crc_success = manipulate_crc(str(new_bundle_path), str(intermediate_path), enable_padding)
+        log(f"  > 待修正文件: {final_path.name}")
+        
+        is_crc_success = manipulate_crc(str(new_bundle_path), str(final_path), enable_padding)
 
         if not is_crc_success:
-            return False, f"CRC 修正失败。中间文件 '{intermediate_path.name}' 可能未被正确修改。"
+            try:
+                final_path.unlink() # 清理失败的文件
+            except OSError as e:
+                log(f"  > 警告: 清理失败的CRC修正文件时出错: {e}")
+            return False, f"CRC 修正失败。最终文件 '{final_path.name}' 未能生成。"
         
         log("✅ CRC 修正成功！")
 
-        # --- 6. 重命名最终文件 ---
-        final_path = work_dir / new_bundle_path.name
-        shutil.move(intermediate_path, final_path)
+        # --- 6. 确认最终文件 ---
         log(f"\n🎉 全部流程处理完成！")
+        log(f"未修正CRC的文件已保存: {intermediate_path}")
         log(f"最终文件已保存至: {final_path}")
 
-        return True, f"一键更新成功！\n\n最终文件保存在工作目录中:\n{final_path}"
+        return True, f"一键更新成功！\n\n最终文件保存在工作目录中:\n{final_path}\n\n(同时保留了未修正CRC的版本 '{intermediate_path.name}')"
 
     except Exception as e:
         log(f"\n❌ 严重错误: 在一键更新流程中发生错误: {e}")
