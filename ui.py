@@ -10,14 +10,14 @@ import os
 
 # 导入自定义模块
 import processing
-from utils import Logger
+from utils import Logger, CRCUtils # <--- 修改: 同时导入 CRCUtils
 
 class App(tk.Frame):
     def __init__(self, master):
         super().__init__(master)
         self.master = master
         self.master.title("Unity Modding 工具集")
-        self.master.geometry("1200x900") # 稍微调大窗口高度
+        self.master.geometry("1200x900")
         self.master.configure(bg='#f5f5f5')
         
         # --- Tab 1 & 2 变量 ---
@@ -138,7 +138,6 @@ class App(tk.Frame):
         path_entry_frame.pack(fill=tk.X, pady=(0, 8))
         
         tk.Label(path_entry_frame, text="自动寻找路径:", bg='#ffffff').pack(side=tk.LEFT)
-        # 修改: 使用共享的变量 self.game_resource_dir_var
         path_entry = tk.Entry(path_entry_frame, textvariable=self.game_resource_dir_var, font=("Microsoft YaHei", 9), bg="#ecf0f1", fg="#34495e", relief=tk.SUNKEN, bd=1)
         path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         
@@ -314,7 +313,7 @@ class App(tk.Frame):
         p = filedialog.asksaveasfilename(title="保存修改后的 Bundle", initialfile=self.b2b_output_path.get(), defaultextension=".bundle", filetypes=[("Bundle files", "*.bundle"), ("All files", "*.*")])
         if p: self.b2b_output_path.set(p)
 
-    # --- 修改: Tab 3 (CRC) 事件处理 ---
+    # --- Tab 3 (CRC) 事件处理 ---
     def drop_crc_original(self, event): self.set_crc_original_file(Path(event.data.strip('{}')))
     def browse_crc_original(self):
         p = filedialog.askopenfilename(title="请选择原始文件");
@@ -352,7 +351,6 @@ class App(tk.Frame):
             self.logger.log(f"⚠️ 警告: 未能在 '{self.game_resource_dir}' 中找到对应的原始文件。")
             self.logger.status("未找到对应的原始文件")
 
-    # 将CRC Tab的目录选择/打开功能变为通用函数
     def select_game_resource_directory(self):
         try:
             current_path = Path(self.game_resource_dir_var.get())
@@ -475,14 +473,12 @@ class App(tk.Frame):
 
     # 一键更新的线程启动函数
     def run_mod_update_thread(self):
-        # 更新验证逻辑
         if not all([self.mod_update_old_mod_path, self.game_resource_dir_var.get(), self.mod_update_work_dir_var.get()]):
             messagebox.showerror("错误", "请确保已选择旧版 Mod、游戏资源目录并指定了工作目录。")
             return
         self.run_in_thread(self.run_mod_update)
 
     def run_mod_update(self):
-        # 更新获取路径的方式，并自动创建目录
         old_mod_path = str(self.mod_update_old_mod_path)
         game_dir = self.game_resource_dir_var.get()
         work_dir = self.mod_update_work_dir_var.get()
@@ -505,7 +501,7 @@ class App(tk.Frame):
         if success:
             messagebox.showinfo("成功", message)
         else:
-            messagebox.showerror("失败", message) # 使用 Error 弹窗以示区别
+            messagebox.showerror("失败", message)
         self.logger.status("处理完成")
 
     # CRC 操作的线程启动函数
@@ -539,7 +535,8 @@ class App(tk.Frame):
             self.logger.log(f"已创建备份文件: {backup_path.name}")
             
             self.logger.log("正在计算CRC修正值...")
-            success = processing.manipulate_crc(self.crc_original_path, self.crc_modified_path, self.crc_enable_padding.get())
+            # 修改 CRC
+            success = CRCUtils.manipulate_crc(self.crc_original_path, self.crc_modified_path, self.crc_enable_padding.get())
             
             if success:
                 self.logger.status("CRC 修正成功！")
@@ -564,8 +561,9 @@ class App(tk.Frame):
             with open(self.crc_original_path, "rb") as f: original_data = f.read()
             with open(self.crc_modified_path, "rb") as f: modified_data = f.read()
 
-            original_crc = processing.compute_crc32(original_data)
-            modified_crc = processing.compute_crc32(modified_data)
+            # 计算CRC
+            original_crc = CRCUtils.compute_crc32(original_data)
+            modified_crc = CRCUtils.compute_crc32(modified_data)
             
             original_crc_hex = f"{original_crc:08X}"
             modified_crc_hex = f"{modified_crc:08X}"

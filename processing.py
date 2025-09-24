@@ -6,8 +6,9 @@ import traceback
 from pathlib import Path
 from PIL import Image
 import shutil
-import binascii
 import re
+
+from utils import CRCUtils
 
 def load_bundle(bundle_path: str, log):
     """
@@ -62,124 +63,6 @@ def load_bundle(bundle_path: str, log):
 
     log(f"❌ 严重错误: 无法以任何方式加载 '{path_obj.name}'。文件可能已损坏。")
     return None
-
-def bytes_to_u32_be(b):
-    return int.from_bytes(b, 'big')
-
-def u32_to_bytes_be(i):
-    return i.to_bytes(4, 'big')
-
-def reverse_bits_in_bytes(b):
-    # b is 4 bytes
-    num = bytes_to_u32_be(b)
-    rev = 0
-    for i in range(32):
-        if (num >> i) & 1:
-            rev |= 1 << (31 - i)
-    return u32_to_bytes_be(rev)
-
-def gf_multiply(a, b):
-    result = 0
-    while b:
-        if b & 1:
-            result ^= a
-        a <<= 1
-        b >>= 1
-    return result
-
-def gf_divide(dividend, divisor):
-    if divisor == 0:
-        return 0
-    quotient = 0
-    remainder = dividend
-    divisor_bits = divisor.bit_length()
-    while remainder.bit_length() >= divisor_bits and remainder != 0:
-        shift = remainder.bit_length() - divisor_bits
-        quotient |= 1 << shift
-        remainder ^= divisor << shift
-    return quotient
-
-def gf_mod(dividend, divisor, n):
-    if divisor == 0:
-        return dividend
-    dividend_bits = dividend.bit_length()
-    divisor_bits = divisor.bit_length()
-    while dividend != 0 and dividend.bit_length() >= divisor_bits:
-        shift = dividend.bit_length() - divisor_bits
-        dividend ^= divisor << shift
-    mask = (1 << n) - 1 if n < 64 else 0xFFFFFFFFFFFFFFFF
-    return dividend & mask
-
-def gf_multiply_modular(a, b, modulus, n):
-    product = gf_multiply(a, b)
-    return gf_mod(product, modulus, n)
-
-def gf_modular_inverse(a, m):
-    if a == 0:
-        raise ValueError("Inverse of zero does not exist")
-    old_r, r = m, a
-    old_s, s = 0, 1
-    while r != 0:
-        q = gf_divide(old_r, r)
-        old_r, r = r, old_r ^ gf_multiply(q, r)
-        old_s, s = s, old_s ^ gf_multiply(q, s)
-    if old_r != 1:
-        raise ValueError("Modular inverse does not exist")
-    return old_s
-
-def gf_inverse(k, poly):
-    x32 = 0x100000000
-    inverse = gf_modular_inverse(x32, poly)
-    result = gf_multiply_modular(k, inverse, poly, 32)
-    return result
-
-def compute_crc32(data: bytes):
-    # Standard CRC32 (IEEE)
-    return binascii.crc32(data) & 0xFFFFFFFF
-
-def xor_bytes(a: bytes, b: bytes) -> bytes:
-    return bytes(x ^ y for x, y in zip(a, b))
-
-def manipulate_crc(original_path, modified_path, enable_padding=False):
-    with open(original_path, "rb") as f:
-        original_data = f.read()
-    with open(modified_path, "rb") as f:
-        modified_data = f.read()
-
-    original_crc = compute_crc32(original_data)
-    
-    padding_bytes = b'\x08\x08\x08\x08' if enable_padding else b''
-    modified_crc = compute_crc32(modified_data + padding_bytes + b'\x00\x00\x00\x00')
-
-    original_bytes = u32_to_bytes_be(original_crc)
-    modified_bytes = u32_to_bytes_be(modified_crc)
-
-    xor_result = xor_bytes(original_bytes, modified_bytes)
-    reversed_bytes = reverse_bits_in_bytes(xor_result)
-    k = bytes_to_u32_be(reversed_bytes)
-
-    crc32_poly = 0x104C11DB7
-
-    correction_value = gf_inverse(k, crc32_poly)
-    correction_bytes_raw = u32_to_bytes_be(correction_value)
-
-    def reverse_byte_bits(byte):
-        return int('{:08b}'.format(byte)[::-1], 2)
-    correction_bytes = bytes(reverse_byte_bits(b) for b in correction_bytes_raw)
-
-    if enable_padding:
-        final_data = modified_data + padding_bytes + correction_bytes
-    else:
-        final_data = modified_data + correction_bytes
-
-    final_crc = compute_crc32(final_data)
-    is_crc_match = (final_crc == original_crc)
-
-    if is_crc_match:
-        with open(modified_path, "wb") as f:
-            f.write(final_data)
-
-    return is_crc_match
 
 def create_backup(original_path: str, log, backup_mode: str = "default") -> bool:
     """
@@ -366,7 +249,6 @@ def process_mod_update(old_mod_path_str: str, game_resource_dir_str: str, workin
         base_working_dir = Path(working_dir_str)
 
         # --- 1. 解析文件名并创建工作目录 ---
-        # 文件名示例：assets-_mx-spinecharacters-ch0273_spr-_mxdependency-2024-11-18_assets_all_2997587984
         log(f"分析旧版Mod文件: {old_mod_path.name}")
         match = re.search(r'(ch\d+)', old_mod_path.name)
         if not match:
@@ -376,7 +258,6 @@ def process_mod_update(old_mod_path_str: str, game_resource_dir_str: str, workin
             char_id = match.group(1)
             log(f"角色ID: {char_id}")
         
-        # 使用旧Mod文件名（不含后缀）和角色ID创建唯一的文件夹名
         work_dir = base_working_dir / f"update_{old_mod_path.stem}"
         work_dir.mkdir(parents=True, exist_ok=True)
         log(f"已创建工作目录: {work_dir}")
@@ -431,7 +312,7 @@ def process_mod_update(old_mod_path_str: str, game_resource_dir_str: str, workin
                 if found_match:
                     new_bundle_path = candidate_path
                     break
-            except Exception: # 忽略无法加载的候选文件
+            except Exception:
                 log(f"    - 警告: 无法加载候选文件 {candidate_path.name}, 已跳过。")
                 continue
         
@@ -473,11 +354,12 @@ def process_mod_update(old_mod_path_str: str, game_resource_dir_str: str, workin
         log(f"  > 原始文件 (用于CRC校验): {new_bundle_path.name}")
         log(f"  > 待修正文件: {final_path.name}")
         
-        is_crc_success = manipulate_crc(str(new_bundle_path), str(final_path), enable_padding)
+        # 使用 CRCUtils 进行修正
+        is_crc_success = CRCUtils.manipulate_crc(str(new_bundle_path), str(final_path), enable_padding)
 
         if not is_crc_success:
             try:
-                final_path.unlink() # 清理失败的文件
+                final_path.unlink()
             except OSError as e:
                 log(f"  > 警告: 清理失败的CRC修正文件时出错: {e}")
             return False, f"CRC 修正失败。最终文件 '{final_path.name}' 未能生成。"
