@@ -110,6 +110,7 @@ class ModUpdateTab(TabFrame):
         self.old_mod_path = None
         self.work_dir_var = tk.StringVar(value=str(Path.cwd() / "output"))
         self.enable_padding = tk.BooleanVar(value=False)
+        self.enable_crc_correction = tk.BooleanVar(value=True)
 
         # 1. 旧版 Mod 文件
         _, self.old_mod_label = UIComponents.create_file_drop_zone(
@@ -132,8 +133,19 @@ class ModUpdateTab(TabFrame):
         options_frame = tk.LabelFrame(self, text="4. 选项与操作", font=("Microsoft YaHei", 11, "bold"), fg="#2c3e50", bg='#ffffff', padx=15, pady=12)
         options_frame.pack(fill=tk.X, pady=(10, 15))
         
-        padding_checkbox = tk.Checkbutton(options_frame, text="添加私货 (CRC修正时)", variable=self.enable_padding, font=("Microsoft YaHei", 9), bg='#ffffff', fg="#34495e", selectcolor="#ecf0f1")
-        padding_checkbox.pack(pady=5)
+        checkbox_frame = tk.Frame(options_frame, bg='#ffffff')
+        checkbox_frame.pack(pady=5)
+        
+        padding_checkbox = tk.Checkbutton(checkbox_frame, text="添加私货", variable=self.enable_padding, font=("Microsoft YaHei", 9), bg='#ffffff', fg="#34495e", selectcolor="#ecf0f1")
+        
+        def toggle_padding_checkbox_state():
+            state = tk.NORMAL if self.enable_crc_correction.get() else tk.DISABLED
+            padding_checkbox.config(state=state)
+
+        crc_checkbox = tk.Checkbutton(checkbox_frame, text="CRC修正", variable=self.enable_crc_correction, font=("Microsoft YaHei", 9), bg='#ffffff', fg="#34495e", selectcolor="#ecf0f1", command=toggle_padding_checkbox_state)
+        
+        crc_checkbox.pack(side=tk.LEFT, padx=10)
+        padding_checkbox.pack(side=tk.LEFT, padx=10)
 
         run_button = tk.Button(self, text="🚀 开始一键更新", command=self.run_update_thread, font=("Microsoft YaHei", 12, "bold"), bg="#8e44ad", fg="white", relief=tk.FLAT, padx=20, pady=10)
         run_button.pack(pady=20)
@@ -203,7 +215,12 @@ class ModUpdateTab(TabFrame):
         self.logger.status("正在处理中，请稍候...")
         
         success, message = processing.process_mod_update(
-            str(self.old_mod_path), game_dir, work_dir, self.enable_padding.get(), self.logger.log
+            str(self.old_mod_path), 
+            game_dir, 
+            work_dir, 
+            self.enable_padding.get(), 
+            self.logger.log,
+            self.enable_crc_correction.get()
         )
 
         if success: messagebox.showinfo("成功", message)
