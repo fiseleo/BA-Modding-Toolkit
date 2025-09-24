@@ -8,6 +8,60 @@ from PIL import Image
 import shutil
 import binascii
 
+def load_bundle(bundle_path: str, log_callback):
+    """
+    尝试加载一个 Unity bundle 文件。
+    如果直接加载失败，会尝试移除末尾的8个或4个字节（可能是CRC修正数据）后再次加载。
+    """
+    path_obj = Path(bundle_path)
+    log_callback(f"正在加载 bundle: {path_obj.name}")
+
+    # 1. 尝试直接加载
+    try:
+        log_callback("  > 尝试直接加载...")
+        env = UnityPy.load(bundle_path)
+        log_callback("  ✅ 直接加载成功。")
+        return env
+    except Exception as e:
+        log_callback(f"  > 直接加载失败: {e}。将尝试作为CRC修正后的文件加载。")
+
+    # 如果直接加载失败，读取文件内容到内存
+    try:
+        with open(bundle_path, "rb") as f:
+            data = f.read()
+    except Exception as e:
+        log_callback(f"  ❌ 错误: 无法读取文件 '{path_obj.name}': {e}")
+        return None
+
+    # 2. 尝试移除末尾8个字节 (padding + crc)
+    if len(data) > 8:
+        try:
+            log_callback("  > 尝试移除末尾8字节后加载...")
+            trimmed_data = data[:-8]
+            env = UnityPy.load(trimmed_data)
+            log_callback("  ✅ 成功加载（移除了8字节）。")
+            return env
+        except Exception as e:
+            log_callback(f"  > 移除8字节后加载失败: {e}")
+    else:
+        log_callback("  > 文件太小，无法移除8字节。")
+
+    # 3. 尝试移除末尾4个字节 (crc only)
+    if len(data) > 4:
+        try:
+            log_callback("  > 尝试移除末尾4字节后加载...")
+            trimmed_data = data[:-4]
+            env = UnityPy.load(trimmed_data)
+            log_callback("  ✅ 成功加载（移除了4字节）。")
+            return env
+        except Exception as e:
+            log_callback(f"  > 移除4字节后加载失败: {e}")
+    else:
+        log_callback("  > 文件太小，无法移除4字节。")
+
+    log_callback(f"❌ 严重错误: 无法以任何方式加载 '{path_obj.name}'。文件可能已损坏。")
+    return None
+
 def bytes_to_u32_be(b):
     return int.from_bytes(b, 'big')
 
@@ -126,14 +180,19 @@ def manipulate_crc(original_path, modified_path, enable_padding=False):
 
     return is_crc_match
 
-# --- 原有的函数 ---
-
-def create_backup(original_path: str, log_callback) -> bool:
+def create_backup(original_path: str, log_callback, backup_mode: str = "default") -> bool:
     """
     创建原始文件的备份
+    backup_mode: "default" - 在原文件后缀后添加.bak
+                 "b2b" - 重命名为orig_(原名)
     """
     try:
-        backup_path = Path(original_path).with_suffix(Path(original_path).suffix + '.bak')
+        path_obj = Path(original_path)
+        if backup_mode == "b2b":
+            backup_path = path_obj.with_name(f"orig_{path_obj.name}")
+        else:
+            backup_path = path_obj.with_suffix(path_obj.suffix + '.bak')
+        
         log_callback(f"正在备份原始文件到: {backup_path.name}")
         shutil.copy2(original_path, backup_path)
         log_callback("✅ 备份已创建。")
@@ -151,9 +210,11 @@ def process_bundle_replacement(bundle_path: str, image_folder: str, output_path:
             if not create_backup(bundle_path, log_callback):
                 return False, "创建备份失败，操作已终止。"
 
-        log_callback(f"正在加载 bundle 文件: {Path(bundle_path).name}")
-        env = UnityPy.load(bundle_path)
-
+        # MODIFIED: Use the robust loader, although this mode is less likely to need it.
+        env = load_bundle(bundle_path, log_callback)
+        if not env:
+            return False, "无法加载目标 Bundle 文件，即使在尝试移除潜在的 CRC 补丁后也是如此。请检查文件是否损坏。"
+        
         replacement_tasks = []
         image_files = [f for f in os.listdir(image_folder) if f.lower().endswith(".png")]
 
@@ -222,13 +283,16 @@ def process_bundle_to_bundle_replacement(new_bundle_path: str, old_bundle_path: 
     """
     try:
         if create_backup_file:
-            if not create_backup(new_bundle_path, log_callback):
+            if not create_backup(new_bundle_path, log_callback, "b2b"):
                 return False, "创建备份失败，操作已终止。"
 
-        log_callback(f"正在加载新版 bundle: {Path(new_bundle_path).name}")
-        new_env = UnityPy.load(new_bundle_path)
-        log_callback(f"正在加载旧版 bundle: {Path(old_bundle_path).name}")
-        old_env = UnityPy.load(old_bundle_path)
+        new_env = load_bundle(new_bundle_path, log_callback)
+        if not new_env:
+            return False, "无法加载新版 Bundle 文件，即使在尝试移除潜在的 CRC 补丁后也是如此。请检查文件是否损坏。"
+        
+        old_env = load_bundle(old_bundle_path, log_callback)
+        if not old_env:
+            return False, "无法加载旧版 Bundle 文件，即使在尝试移除潜在的 CRC 补丁后也是如此。请检查文件是否损坏。"
 
         log_callback("\n正在从旧版 bundle 中提取 Texture2D 资源...")
         old_textures_map = {}

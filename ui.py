@@ -154,7 +154,7 @@ class App(tk.Frame):
         options_frame = tk.LabelFrame(tab3, text="3. 选项与操作", font=("Microsoft YaHei", 11, "bold"), fg="#2c3e50", bg='#ffffff', padx=15, pady=12)
         options_frame.pack(fill=tk.X, pady=(0, 10))
 
-        padding_checkbox = tk.Checkbutton(options_frame, text="添加私货 (Enable Padding)", variable=self.crc_enable_padding, font=("Microsoft YaHei", 9), bg='#ffffff', fg="#34495e", selectcolor="#ecf0f1")
+        padding_checkbox = tk.Checkbutton(options_frame, text="添加私货", variable=self.crc_enable_padding, font=("Microsoft YaHei", 9), bg='#ffffff', fg="#34495e", selectcolor="#ecf0f1")
         padding_checkbox.pack(pady=5)
 
         button_frame = tk.Frame(options_frame, bg='#ffffff')
@@ -258,8 +258,8 @@ class App(tk.Frame):
     def auto_set_b2b_output(self):
         if self.b2b_new_bundle_path:
             p = self.b2b_new_bundle_path
-            new_name = f"{p.stem}_restored{p.suffix}"
-            self.b2b_output_path.set(str(p.with_name(new_name)))
+            # 使用原名作为输出文件名
+            self.b2b_output_path.set(str(p))
 
     def save_as_b2b_output(self):
         p = filedialog.asksaveasfilename(title="保存修改后的 Bundle", initialfile=self.b2b_output_path.get(), defaultextension=".bundle", filetypes=[("Bundle files", "*.bundle"), ("All files", "*.*")])
