@@ -109,6 +109,7 @@ class ModUpdateTab(TabFrame):
     def create_widgets(self, game_resource_dir_var, output_dir_var):
         self.old_mod_path = None
         self.new_mod_path = None 
+        self.final_output_path = None # 新增：用于存储成功生成的文件路径
         self.enable_padding = tk.BooleanVar(value=False)
         self.enable_crc_correction = tk.BooleanVar(value=True)
 
@@ -160,8 +161,16 @@ class ModUpdateTab(TabFrame):
         crc_checkbox.pack(side=tk.LEFT, padx=10)
         padding_checkbox.pack(side=tk.LEFT, padx=10)
 
-        run_button = tk.Button(self, text="🚀 开始一键更新", command=self.run_update_thread, font=("Microsoft YaHei", 12, "bold"), bg="#8e44ad", fg="white", relief=tk.FLAT, padx=20, pady=10)
-        run_button.pack(pady=20)
+        # --- 新增: 操作按钮区域 ---
+        action_button_frame = tk.Frame(self, bg='#f0f0f0') # 使用与父框架相同的背景色
+        action_button_frame.pack(fill=tk.X, pady=10)
+        action_button_frame.grid_columnconfigure((0, 1), weight=1) # 让两个按钮平分空间
+
+        run_button = tk.Button(action_button_frame, text="🚀 开始一键更新", command=self.run_update_thread, font=("Microsoft YaHei", 12, "bold"), bg="#8e44ad", fg="white", relief=tk.FLAT, padx=15, pady=8)
+        run_button.grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=10)
+        
+        self.replace_button = tk.Button(action_button_frame, text="🔥 覆盖游戏原文件", command=self.replace_original_thread, font=("Microsoft YaHei", 12, "bold"), bg="#e74c3c", fg="white", relief=tk.FLAT, padx=15, pady=8, state=tk.DISABLED)
+        self.replace_button.grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=10)
 
     # --- 修改: 旧版 Mod 的处理方法，增加自动查找回调 ---
     def drop_old_mod(self, event):
@@ -173,7 +182,6 @@ class ModUpdateTab(TabFrame):
         if p:
             self.set_file_path('old_mod_path', self.old_mod_label, Path(p), "旧版 Mod", self.auto_find_new_bundle)
 
-    # --- 新版 Mod 的处理方法 (保持不变) ---
     def drop_new_mod(self, event):
         path = Path(event.data.strip('{}'))
         self.set_new_mod_file(path)
@@ -189,9 +197,8 @@ class ModUpdateTab(TabFrame):
         self.new_mod_label.config(text=f"已选择新版资源:\n{path.name}", fg="#27ae60")
         self.logger.log(f"已加载新版资源: {path.name}")
         self.logger.status("已加载新版资源")
-    # --------------------------------
 
-    # --- 自动查找相关方法 (保持不变，现在由选择旧版Mod时触发) ---
+    # 自动查找相关方法
     def auto_find_new_bundle(self):
         """触发后台线程以查找匹配的新版Bundle文件。"""
         if not all([self.old_mod_path, self.game_resource_dir_var.get()]):
@@ -218,7 +225,6 @@ class ModUpdateTab(TabFrame):
             ui_message = f"❌ 未找到资源: {short_message}"
             self.new_mod_label.config(text=ui_message, fg="#e74c3c")
             self.logger.status("未找到匹配的新版资源")
-    # ---------------------------
 
     def run_update_thread(self):
         if not all([self.old_mod_path, self.new_mod_path, self.game_resource_dir_var.get(), self.work_dir_var.get()]):
@@ -227,10 +233,18 @@ class ModUpdateTab(TabFrame):
         self.run_in_thread(self.run_update)
 
     def run_update(self):
-        work_dir = self.work_dir_var.get()
+        # --- 修改: 增加按钮状态管理和路径记录 ---
+        # 每次开始更新时，先禁用替换按钮
+        self.final_output_path = None
+        self.master.after(0, lambda: self.replace_button.config(state=tk.DISABLED))
+
+        work_dir_base = Path(self.work_dir_var.get())
+        # 直接将基础输出目录传递给 processing 函数，它会创建子目录
+        work_dir = work_dir_base 
 
         try:
-            Path(work_dir).mkdir(parents=True, exist_ok=True)
+            # 确保基础输出目录存在
+            work_dir.mkdir(parents=True, exist_ok=True) 
         except Exception as e:
             messagebox.showerror("错误", f"无法创建工作目录:\n{work_dir}\n\n错误详情: {e}")
             return
@@ -239,18 +253,97 @@ class ModUpdateTab(TabFrame):
         self.logger.log("模式：开始一键更新 Mod...")
         self.logger.status("正在处理中，请稍候...")
         
+        # 传递 work_dir (基础输出目录)
         success, message = processing.process_mod_update(
             str(self.old_mod_path), 
             str(self.new_mod_path),
-            work_dir, 
+            str(work_dir), # <-- 传递的是基础输出目录
             self.enable_padding.get(), 
             self.logger.log,
             self.enable_crc_correction.get()
         )
+        
+        if success:
+            # 成功后，记录最终文件路径并启用按钮
+            # processing.py 内部会创建带更新信息的子目录，所以我们需要找到它
+            # 查找方式：在 work_dir 中寻找以 "update_" 开头，并且包含新bundle文件名的目录
+            generated_bundle_filename = self.new_mod_path.name
+            update_subdir = None
+            for item in work_dir.iterdir():
+                if item.is_dir() and item.name.startswith("update_") and generated_bundle_filename in str(item):
+                    update_subdir = item
+                    break
+            
+            if update_subdir:
+                self.final_output_path = update_subdir / generated_bundle_filename
+            else:
+                # 如果找不到预期的子目录，尝试直接在 work_dir 中查找 (作为后备)
+                potential_path = work_dir / generated_bundle_filename
+                if potential_path.exists():
+                    self.final_output_path = potential_path
+                else:
+                    self.logger.log(f"⚠️ 警告: 无法确定生成的 Mod 文件路径。请手动查找。")
+                    self.final_output_path = None # 确保路径为空
 
-        if success: messagebox.showinfo("成功", message)
-        else: messagebox.showerror("失败", message)
+            if self.final_output_path and self.final_output_path.exists():
+                self.logger.log(f"✅ 更新成功。最终文件路径: {self.final_output_path}")
+                self.logger.log(f"现在可以点击 '覆盖游戏原文件' 按钮来应用 Mod。")
+                self.master.after(0, lambda: self.replace_button.config(state=tk.NORMAL))
+                messagebox.showinfo("成功", message)
+            else:
+                # 如果路径查找失败，但process_mod_update返回成功，仍需显示消息
+                self.logger.log(f"⚠️ 警告: 更新成功，但无法自动确定最终文件路径。请在 '{work_dir}' 目录中查找。")
+                self.master.after(0, lambda: self.replace_button.config(state=tk.DISABLED)) # 禁用替换按钮，因为路径未知
+                messagebox.showinfo("成功 (路径未知)", message + "\n\n⚠️ 警告：无法自动确定最终文件路径，请在输出目录中手动查找。")
+        else:
+            messagebox.showerror("失败", message)
+        
         self.logger.status("处理完成")
+
+    # 替换原始文件相关方法
+    def replace_original_thread(self):
+        """启动替换原始游戏文件的线程"""
+        if not self.final_output_path or not self.final_output_path.exists():
+            messagebox.showerror("错误", "找不到已生成的 Mod 文件。\n请先成功执行一次'一键更新'。")
+            return
+        if not self.new_mod_path or not self.new_mod_path.exists():
+            messagebox.showerror("错误", "找不到原始游戏资源文件路径。\n请确保在更新前已正确指定新版游戏资源。")
+            return
+        
+        self.run_in_thread(self.replace_original)
+
+    def replace_original(self):
+        """执行实际的文件替换操作（在线程中）"""
+        if not messagebox.askyesno("严重警告", 
+                                   f"此操作将覆盖游戏目录中的原始文件:\n\n{self.new_mod_path.name}\n\n"
+                                   "程序会尝试创建一个 .backup 后缀的备份文件，但强烈建议您手动备份！\n\n确定要继续吗？"):
+            return
+
+        self.logger.log("\n" + "="*50)
+        self.logger.log(f"模式：开始覆盖游戏原文件 '{self.new_mod_path.name}'...")
+        self.logger.status("正在覆盖文件...")
+        try:
+            # 目标文件就是新版游戏资源文件
+            target_file = self.new_mod_path
+            # 源文件是刚刚生成的新Mod
+            source_file = self.final_output_path
+
+            backup_path = target_file.with_suffix(target_file.suffix + '.backup')
+            self.logger.log(f"  > 正在备份原始文件到: {backup_path.name}")
+            shutil.copy2(target_file, backup_path)
+            
+            self.logger.log(f"  > 正在用 '{source_file.name}' 覆盖 '{target_file.name}'...")
+            shutil.copy2(source_file, target_file)
+            
+            self.logger.log("✅ 原始文件已成功覆盖！")
+            self.logger.status("文件覆盖完成")
+            messagebox.showinfo("成功", f"游戏原始文件已成功覆盖！\n\n原始文件备份至:\n{backup_path.name}")
+
+        except Exception as e:
+            self.logger.log(f"❌ 文件覆盖失败: {e}")
+            self.logger.status("文件覆盖失败")
+            messagebox.showerror("错误", f"文件覆盖过程中发生错误:\n{e}")
+
 
 class PngReplacementTab(TabFrame):
     def create_widgets(self, output_dir_var):

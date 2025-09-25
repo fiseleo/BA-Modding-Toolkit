@@ -300,27 +300,28 @@ def find_new_bundle_path(old_mod_path_str: str, game_resource_dir_str: str, log)
 def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_dir_str: str, enable_padding: bool, log, perform_crc: bool):
     """
     自动化Mod更新流程。
-    此版本直接接收旧版Mod路径和新版资源路径，不再进行内部查找。
+    此版本直接接收旧版Mod路径和新版资源路径，并且将文件保存在指定的working_dir_str下。
     """
     try:
         log("🚀 开始一键更新流程...")
         old_mod_path = Path(old_mod_path_str)
-        new_bundle_path = Path(new_bundle_path_str) # 直接使用传入的新版文件路径
+        new_bundle_path = Path(new_bundle_path_str) 
         base_working_dir = Path(working_dir_str)
 
         log(f"  > 使用旧版 Mod: {old_mod_path.name}")
         log(f"  > 使用新版资源: {new_bundle_path.name}")
 
         # --- 1. 创建工作目录 ---
-        work_dir = base_working_dir / f"update_{old_mod_path.stem}"
-        work_dir.mkdir(parents=True, exist_ok=True)
-        log(f"已创建工作目录: {work_dir}")
+        # processing.py 不再创建子目录，直接使用 ui.py 提供的目录
+        log(f"  > 使用工作目录: {base_working_dir}")
 
         # --- 2. 执行 B2B 替换 ---
         log("\n--- 阶段 1: Bundle-to-Bundle 替换 ---")
         
         # 加载旧版 Mod 的贴图数据
         old_env = load_bundle(old_mod_path_str, log)
+        if not old_env:
+            return False, "加载旧版 Mod 文件失败。"
         old_textures_map = {}
         for obj in old_env.objects:
             if obj.type.name == "Texture2D":
@@ -344,15 +345,17 @@ def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_
         log(f"  > B2B 替换完成，共处理 {replacement_count} 个贴图。")
 
         # --- 3. 根据选项决定是否执行CRC修正 ---
+        intermediate_path = None # 用于存储未修正CRC的文件路径
+        final_path = base_working_dir / new_bundle_path.name # 最终文件直接保存在base_working_dir下
+
         if perform_crc:
-            intermediate_path = work_dir / f"uncrc_{new_bundle_path.name}"
+            intermediate_path = base_working_dir / f"uncrc_{new_bundle_path.name}"
             log(f"  > 正在保存未修正CRC的中间文件到: {intermediate_path.name}")
             with open(intermediate_path, "wb") as f:
                 f.write(new_env.file.save(packer="lzma"))
             log("  > 中间文件保存成功。")
 
             log("\n--- 阶段 2: CRC 修正 ---")
-            final_path = work_dir / new_bundle_path.name
             
             log(f"  > 正在复制 '{intermediate_path.name}' 到 '{final_path.name}' 以进行CRC修正。")
             shutil.copy2(intermediate_path, final_path)
@@ -360,14 +363,17 @@ def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_
             log(f"  > 原始文件 (用于CRC校验): {new_bundle_path.name}")
             log(f"  > 待修正文件: {final_path.name}")
             
-            # 注意：这里的原始文件应该是新版游戏资源文件
+            # 注意：这里的原始文件应该是新版游戏资源文件 (new_bundle_path)
             is_crc_success = CRCUtils.manipulate_crc(str(new_bundle_path), str(final_path), enable_padding)
 
             if not is_crc_success:
-                try:
-                    final_path.unlink()
-                except OSError as e:
-                    log(f"  > 警告: 清理失败的CRC修正文件时出错: {e}")
+                # 如果CRC修正失败，尝试删除最终文件（如果存在）
+                if final_path.exists():
+                    try:
+                        final_path.unlink()
+                        log(f"  > 已删除失败的CRC修正文件: {final_path.name}")
+                    except OSError as e:
+                        log(f"  > 警告: 清理失败的CRC修正文件时出错: {e}")
                 return False, f"CRC 修正失败。最终文件 '{final_path.name}' 未能生成。"
             
             log("✅ CRC 修正成功！")
@@ -375,9 +381,8 @@ def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_
             log(f"未修正CRC的文件已保存: {intermediate_path}")
             log(f"最终文件已保存至: {final_path}")
 
-            return True, f"一键更新成功！\n\n最终文件保存在工作目录中:\n{final_path}\n\n(同时保留了未修正CRC的版本 '{intermediate_path.name}')"
+            return True, f"一键更新成功！\n\n最终文件保存在:\n{final_path}\n\n(同时保留了未修正CRC的版本 '{intermediate_path.name}')"
         else:
-            final_path = work_dir / new_bundle_path.name
             log(f"  > CRC修正已跳过。正在直接保存最终文件到: {final_path.name}")
             with open(final_path, "wb") as f:
                 f.write(new_env.file.save(packer="lzma"))
@@ -386,7 +391,7 @@ def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_
             log(f"\n🎉 全部流程处理完成！")
             log(f"最终文件已保存至: {final_path}")
             
-            return True, f"一键更新成功！ (已跳过CRC修正)\n\n最终文件保存在工作目录中:\n{final_path}"
+            return True, f"一键更新成功！ (已跳过CRC修正)\n\n最终文件保存在:\n{final_path}"
 
     except Exception as e:
         log(f"\n❌ 严重错误: 在一键更新流程中发生错误: {e}")
