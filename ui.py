@@ -106,31 +106,44 @@ class TabFrame(ttk.Frame):
 # --- 具体 Tab 实现 ---
 
 class ModUpdateTab(TabFrame):
-    def create_widgets(self, game_resource_dir_var):
+    def create_widgets(self, game_resource_dir_var, output_dir_var):
         self.old_mod_path = None
-        self.work_dir_var = tk.StringVar(value=str(Path.cwd() / "output"))
+        self.new_mod_path = None 
         self.enable_padding = tk.BooleanVar(value=False)
         self.enable_crc_correction = tk.BooleanVar(value=True)
 
+        # 接收共享的变量
+        self.game_resource_dir_var = game_resource_dir_var
+        self.work_dir_var = output_dir_var
+
         # 1. 旧版 Mod 文件
         _, self.old_mod_label = UIComponents.create_file_drop_zone(
-            self, "1. 拖入旧版 Mod Bundle", self.drop_old_mod, self.browse_old_mod)
-
-        # 2. 游戏资源目录
-        UIComponents.create_directory_path_entry(
-            self, "2. 游戏资源目录 (新版文件所在位置)", game_resource_dir_var,
-            self.select_game_resource_directory, self.open_game_resource_in_explorer
+            self, "拖入旧版 Mod Bundle", self.drop_old_mod, self.browse_old_mod
         )
-        self.game_resource_dir_var = game_resource_dir_var
+        
+        # 2. 新版游戏资源文件
+        new_mod_frame = tk.LabelFrame(self, text="新版游戏资源 Bundle", font=("Microsoft YaHei", 11, "bold"), fg="#2c3050", bg='#ffffff', padx=15, pady=12)
+        new_mod_frame.pack(fill=tk.X, pady=(0, 10))
 
-        # 3. 工作目录
-        UIComponents.create_directory_path_entry(
-            self, "3. 工作目录 (用于存放输出文件)", self.work_dir_var,
-            self.select_work_dir, self.open_work_dir_in_explorer
-        )
+        # 显示游戏资源目录路径
+        auto_find_frame = tk.Frame(new_mod_frame, bg='#ffffff')
+        auto_find_frame.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(auto_find_frame, text="游戏资源目录:", bg='#ffffff').pack(side=tk.LEFT, padx=(0,5))
+        tk.Entry(auto_find_frame, textvariable=self.game_resource_dir_var, font=("Microsoft YaHei", 9), bg="#ecf0f1", fg="#34495e", relief=tk.SUNKEN, bd=1, state='readonly').pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # 4. 选项和操作
-        options_frame = tk.LabelFrame(self, text="4. 选项与操作", font=("Microsoft YaHei", 11, "bold"), fg="#2c3e50", bg='#ffffff', padx=15, pady=12)
+        # 新版文件的拖放区 (修改提示文本)
+        self.new_mod_label = tk.Label(new_mod_frame, text="拖入旧版Mod后将自动查找新版资源\n或手动拖放/浏览文件", relief=tk.GROOVE, height=4, bg="#ecf0f1", fg="#34495e", font=("Microsoft YaHei", 9))
+        self.new_mod_label.pack(fill=tk.X, pady=(4, 8))
+        self.new_mod_label.drop_target_register(DND_FILES)
+        self.new_mod_label.dnd_bind('<<Drop>>', self.drop_new_mod)
+        
+        # 功能按钮 (移除自动查找按钮)
+        button_container = tk.Frame(new_mod_frame, bg='#ffffff')
+        button_container.pack()
+        tk.Button(button_container, text="手动浏览...", command=self.browse_new_mod, font=("Microsoft YaHei", 9), bg="#3498db", fg="white", relief=tk.FLAT).pack(side=tk.LEFT, padx=5)
+
+        # 3. 选项和操作
+        options_frame = tk.LabelFrame(self, text="选项与操作", font=("Microsoft YaHei", 11, "bold"), fg="#2c3e50", bg='#ffffff', padx=15, pady=12)
         options_frame.pack(fill=tk.X, pady=(10, 15))
         
         checkbox_frame = tk.Frame(options_frame, bg='#ffffff')
@@ -150,58 +163,70 @@ class ModUpdateTab(TabFrame):
         run_button = tk.Button(self, text="🚀 开始一键更新", command=self.run_update_thread, font=("Microsoft YaHei", 12, "bold"), bg="#8e44ad", fg="white", relief=tk.FLAT, padx=20, pady=10)
         run_button.pack(pady=20)
 
-    def drop_old_mod(self, event): self.set_file_path('old_mod_path', self.old_mod_label, Path(event.data.strip('{}')), "旧版 Mod")
+    # --- 修改: 旧版 Mod 的处理方法，增加自动查找回调 ---
+    def drop_old_mod(self, event):
+        path = Path(event.data.strip('{}'))
+        self.set_file_path('old_mod_path', self.old_mod_label, path, "旧版 Mod", self.auto_find_new_bundle)
+
     def browse_old_mod(self):
-        p = filedialog.askopenfilename(title="选择旧版 Mod Bundle");
-        if p: self.set_file_path('old_mod_path', self.old_mod_label, Path(p), "旧版 Mod")
+        p = filedialog.askopenfilename(title="选择旧版 Mod Bundle")
+        if p:
+            self.set_file_path('old_mod_path', self.old_mod_label, Path(p), "旧版 Mod", self.auto_find_new_bundle)
 
-    def _select_directory(self, var, title):
-        try:
-            current_path = Path(var.get())
-            if not current_path.is_dir(): current_path = Path.home()
-            selected_dir = filedialog.askdirectory(title=title, initialdir=str(current_path))
-            if selected_dir:
-                var.set(str(Path(selected_dir)))
-                self.logger.log(f"已更新目录: {selected_dir}")
-        except Exception as e:
-            messagebox.showerror("错误", f"选择目录时发生错误:\n{e}")
+    # --- 新版 Mod 的处理方法 (保持不变) ---
+    def drop_new_mod(self, event):
+        path = Path(event.data.strip('{}'))
+        self.set_new_mod_file(path)
 
-    def select_game_resource_directory(self):
-        self._select_directory(self.game_resource_dir_var, "选择游戏资源目录")
+    def browse_new_mod(self):
+        p = filedialog.askopenfilename(title="选择新版游戏资源 Bundle")
+        if p:
+            self.set_new_mod_file(Path(p))
+            
+    def set_new_mod_file(self, path: Path):
+        """统一设置新版Mod文件的路径和UI显示"""
+        self.new_mod_path = path
+        self.new_mod_label.config(text=f"已选择新版资源:\n{path.name}", fg="#27ae60")
+        self.logger.log(f"已加载新版资源: {path.name}")
+        self.logger.status("已加载新版资源")
+    # --------------------------------
 
-    def select_work_dir(self):
-        self._select_directory(self.work_dir_var, "选择工作目录")
-
-    def _open_directory_in_explorer(self, path_str, create_if_not_exist=False):
-        try:
-            path = Path(path_str)
-            if not path.is_dir():
-                if create_if_not_exist:
-                    if messagebox.askyesno("提示", f"目录不存在:\n{path}\n\n是否要创建它？"):
-                        path.mkdir(parents=True, exist_ok=True)
-                    else: return
-                else:
-                    messagebox.showwarning("警告", f"路径不存在或不是一个文件夹:\n{path}")
-                    return
-            os.startfile(str(path))
-            self.logger.log(f"已在资源管理器中打开目录: {path}")
-        except Exception as e:
-            messagebox.showerror("错误", f"打开资源管理器时发生错误:\n{e}")
-
-    def open_game_resource_in_explorer(self):
-        self._open_directory_in_explorer(self.game_resource_dir_var.get())
-    
-    def open_work_dir_in_explorer(self):
-        self._open_directory_in_explorer(self.work_dir_var.get(), create_if_not_exist=True)
+    # --- 自动查找相关方法 (保持不变，现在由选择旧版Mod时触发) ---
+    def auto_find_new_bundle(self):
+        """触发后台线程以查找匹配的新版Bundle文件。"""
+        if not all([self.old_mod_path, self.game_resource_dir_var.get()]):
+            self.new_mod_label.config(text="⚠️ 请先选择旧版Mod并设置游戏资源目录", fg="#e67e22")
+            messagebox.showwarning("提示", "请先选择旧版Mod文件，并设置游戏资源目录，才能进行自动查找。")
+            return
+        self.run_in_thread(self._find_new_bundle_worker)
+        
+    def _find_new_bundle_worker(self):
+        """在后台线程中执行查找操作并更新UI。"""
+        self.new_mod_label.config(text="正在搜索新版资源...", fg="#e67e22")
+        self.logger.status("正在搜索新版资源...")
+        
+        found_path, message = processing.find_new_bundle_path(
+            str(self.old_mod_path),
+            self.game_resource_dir_var.get(),
+            self.logger.log
+        )
+        
+        if found_path:
+            self.master.after(0, self.set_new_mod_file, found_path)
+        else:
+            short_message = message.split('。')[0]
+            ui_message = f"❌ 未找到资源: {short_message}"
+            self.new_mod_label.config(text=ui_message, fg="#e74c3c")
+            self.logger.status("未找到匹配的新版资源")
+    # ---------------------------
 
     def run_update_thread(self):
-        if not all([self.old_mod_path, self.game_resource_dir_var.get(), self.work_dir_var.get()]):
-            messagebox.showerror("错误", "请确保已选择旧版 Mod、游戏资源目录并指定了工作目录。")
+        if not all([self.old_mod_path, self.new_mod_path, self.game_resource_dir_var.get(), self.work_dir_var.get()]):
+            messagebox.showerror("错误", "请确保已分别指定旧版Mod、新版游戏资源，并设置了游戏资源目录和工作目录。")
             return
         self.run_in_thread(self.run_update)
 
     def run_update(self):
-        game_dir = self.game_resource_dir_var.get()
         work_dir = self.work_dir_var.get()
 
         try:
@@ -216,7 +241,7 @@ class ModUpdateTab(TabFrame):
         
         success, message = processing.process_mod_update(
             str(self.old_mod_path), 
-            game_dir, 
+            str(self.new_mod_path),
             work_dir, 
             self.enable_padding.get(), 
             self.logger.log,
@@ -227,22 +252,21 @@ class ModUpdateTab(TabFrame):
         else: messagebox.showerror("失败", message)
         self.logger.status("处理完成")
 
-
 class PngReplacementTab(TabFrame):
-    def create_widgets(self):
+    def create_widgets(self, output_dir_var):
         self.bundle_path = None
         self.folder_path = None
         self.output_path = tk.StringVar()
+        # 接收共享的输出目录变量
+        self.output_dir_var = output_dir_var
 
         _, self.bundle_label = UIComponents.create_file_drop_zone(
-            self, "1. 目标 Bundle 文件", self.drop_bundle, self.browse_bundle
+            self, "目标 Bundle 文件", self.drop_bundle, self.browse_bundle
         )
         _, self.folder_label = UIComponents.create_folder_drop_zone(
-            self, "2. PNG 图片文件夹", self.drop_folder, self.browse_folder
+            self, "PNG 图片文件夹", self.drop_folder, self.browse_folder
         )
-        UIComponents.create_output_path_entry(
-            self, "3. 输出文件路径", self.output_path, self.save_as_output
-        )
+        # 输出路径输入框已被移除，路径将自动生成到主界面的输出目录中
         
         run_button = tk.Button(self, text="开始替换", command=self.run_replacement_thread, font=("Microsoft YaHei", 12, "bold"), bg="#27ae60", fg="white", relief=tk.FLAT, padx=20, pady=10)
         run_button.pack(pady=20)
@@ -258,19 +282,25 @@ class PngReplacementTab(TabFrame):
         if p: self.set_folder_path('folder_path', self.folder_label, Path(p), "PNG 文件夹")
 
     def auto_set_output(self):
-        if self.bundle_path:
+        if self.bundle_path and self.output_dir_var.get():
             p = self.bundle_path
+            output_dir = Path(self.output_dir_var.get())
             new_name = f"{p.stem}_modified{p.suffix}"
-            self.output_path.set(str(p.with_name(new_name)))
-
-    def save_as_output(self):
-        p = filedialog.asksaveasfilename(title="保存修改后的 Bundle", initialfile=self.output_path.get(), defaultextension=".bundle", filetypes=[("Bundle files", "*.bundle"), ("All files", "*.*")])
-        if p: self.output_path.set(p)
+            self.output_path.set(str(output_dir / new_name))
+            self.logger.log(f"输出路径已自动设置为: {self.output_path.get()}")
 
     def run_replacement_thread(self):
         if not all([self.bundle_path, self.folder_path, self.output_path.get()]):
-            messagebox.showerror("错误", "请确保已选择目标 Bundle、PNG 文件夹，并指定了输出路径。")
+            messagebox.showerror("错误", "请确保已选择目标 Bundle、PNG 文件夹，并在主界面设置了输出目录。")
             return
+        
+        # 确保输出目录存在
+        try:
+            Path(self.output_path.get()).parent.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            messagebox.showerror("错误", f"无法创建输出目录:\n{e}")
+            return
+            
         self.run_in_thread(self.run_replacement)
 
     def run_replacement(self):
@@ -292,18 +322,23 @@ class CrcToolTab(TabFrame):
         self.original_path = None
         self.modified_path = None
         self.enable_padding = tk.BooleanVar(value=False)
+        # 接收共享的游戏资源目录变量
         self.game_resource_dir_var = game_resource_dir_var
 
+        # 2. 修改后文件
+        _, self.modified_label = UIComponents.create_file_drop_zone(
+            self, "修改后文件 (待修正)", self.drop_modified, self.browse_modified
+        )
+
         # 1. 原始文件
-        orig_frame = tk.LabelFrame(self, text="1. 原始文件 (用于CRC校验)", font=("Microsoft YaHei", 11, "bold"), fg="#2c3e50", bg='#ffffff', padx=15, pady=10)
+        orig_frame = tk.LabelFrame(self, text="原始文件 (用于CRC校验)", font=("Microsoft YaHei", 11, "bold"), fg="#2c3e50", bg='#ffffff', padx=15, pady=10)
         orig_frame.pack(fill=tk.X, pady=(0, 10))
         
-        path_entry_frame = tk.Frame(orig_frame, bg='#ffffff')
-        path_entry_frame.pack(fill=tk.X, pady=(0, 8))
-        tk.Label(path_entry_frame, text="自动寻找路径:", bg='#ffffff').pack(side=tk.LEFT)
-        tk.Entry(path_entry_frame, textvariable=self.game_resource_dir_var, font=("Microsoft YaHei", 9), bg="#ecf0f1", fg="#34495e", relief=tk.SUNKEN, bd=1).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        tk.Button(path_entry_frame, text="📂", command=self.select_game_resource_directory, font=("Microsoft YaHei", 10), bg="#3498db", fg="white", relief=tk.FLAT, width=3).pack(side=tk.LEFT, padx=(0, 5))
-        tk.Button(path_entry_frame, text="📁", command=self.open_game_resource_in_explorer, font=("Microsoft YaHei", 10), bg="#9b59b6", fg="white", relief=tk.FLAT, width=3).pack(side=tk.LEFT)
+        # 显示共享的自动寻找路径
+        auto_find_frame = tk.Frame(orig_frame, bg='#ffffff')
+        auto_find_frame.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(auto_find_frame, text="自动寻找路径:", bg='#ffffff').pack(side=tk.LEFT, padx=(0,5))
+        tk.Entry(auto_find_frame, textvariable=self.game_resource_dir_var, font=("Microsoft YaHei", 9), bg="#ecf0f1", fg="#34495e", relief=tk.SUNKEN, bd=1, state='readonly').pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         self.original_label = tk.Label(orig_frame, text="将原始文件拖放到此处\n或点击下方按钮选择", relief=tk.GROOVE, height=3, bg="#ecf0f1", fg="#34495e", font=("Microsoft YaHei", 9))
         self.original_label.pack(fill=tk.X, pady=(8, 8))
@@ -311,13 +346,8 @@ class CrcToolTab(TabFrame):
         self.original_label.dnd_bind('<<Drop>>', self.drop_original)
         tk.Button(orig_frame, text="浏览原始文件...", command=self.browse_original, font=("Microsoft YaHei", 9), bg="#3498db", fg="white", relief=tk.FLAT).pack()
 
-        # 2. 修改后文件
-        _, self.modified_label = UIComponents.create_file_drop_zone(
-            self, "2. 修改后文件 (待修正)", self.drop_modified, self.browse_modified
-        )
-
         # 3. 选项与操作
-        options_frame = tk.LabelFrame(self, text="3. 选项与操作", font=("Microsoft YaHei", 11, "bold"), fg="#2c3e50", bg='#ffffff', padx=15, pady=12)
+        options_frame = tk.LabelFrame(self, text="选项与操作", font=("Microsoft YaHei", 11, "bold"), fg="#2c3e50", bg='#ffffff', padx=15, pady=12)
         options_frame.pack(fill=tk.X, pady=(0, 10))
         tk.Checkbutton(options_frame, text="添加私货", variable=self.enable_padding, font=("Microsoft YaHei", 9), bg='#ffffff', fg="#34495e", selectcolor="#ecf0f1").pack(pady=5)
         
@@ -328,12 +358,6 @@ class CrcToolTab(TabFrame):
         tk.Button(button_frame, text="运行CRC修正", command=self.run_correction_thread, font=("Microsoft YaHei", 10, "bold"), bg="#27ae60", fg="white", relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=0, sticky="ew", padx=5)
         tk.Button(button_frame, text="计算CRC值", command=self.calculate_values_thread, font=("Microsoft YaHei", 10, "bold"), bg="#e67e22", fg="white", relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=1, sticky="ew", padx=5)
         tk.Button(button_frame, text="替换原始文件", command=self.replace_original_thread, font=("Microsoft YaHei", 10, "bold"), bg="#e74c3c", fg="white", relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=2, sticky="ew", padx=5)
-
-    def select_game_resource_directory(self):
-        ModUpdateTab._select_directory(self, self.game_resource_dir_var, "选择游戏资源目录")
-
-    def open_game_resource_in_explorer(self):
-        ModUpdateTab._open_directory_in_explorer(self, self.game_resource_dir_var.get())
 
     def drop_original(self, event): self.set_original_file(Path(event.data.strip('{}')))
     def browse_original(self):
@@ -356,14 +380,19 @@ class CrcToolTab(TabFrame):
         self.modified_label.config(text=f"已选择: {path.name}", fg="#27ae60")
         self.logger.log(f"已加载CRC修改后文件: {path.name}")
         
-        game_dir = Path(self.game_resource_dir_var.get())
-        if game_dir.is_dir():
-            candidate = game_dir / path.name
-            if candidate.exists():
-                self.set_original_file(candidate)
-                self.logger.log(f"已自动找到并加载原始文件: {candidate.name}")
-            else:
-                self.logger.log(f"⚠️ 警告: 未能在 '{game_dir.name}' 中找到对应的原始文件。")
+        game_dir_str = self.game_resource_dir_var.get()
+        if game_dir_str:
+            game_dir = Path(game_dir_str)
+            if game_dir.is_dir():
+                candidate = game_dir / path.name
+                if candidate.exists():
+                    self.set_original_file(candidate)
+                    self.logger.log(f"已自动找到并加载原始文件: {candidate.name}")
+                else:
+                    self.logger.log(f"⚠️ 警告: 未能在 '{game_dir.name}' 中找到对应的原始文件。")
+        else:
+            self.logger.log("⚠️ 警告: 未设置游戏资源目录，无法自动寻找原始文件。")
+
 
     def _validate_paths(self):
         if not self.original_path or not self.modified_path:
@@ -460,12 +489,15 @@ class App(tk.Frame):
         self.master.configure(bg='#f5f5f5')
 
     def init_shared_variables(self):
-        """初始化所有Tabs可能共享的变量。"""
+        """初始化所有Tabs共享的变量。"""
         # 尝试定位游戏资源目录
         game_dir = Path(r"D:\SteamLibrary\steamapps\common\BlueArchive\BlueArchive_Data\StreamingAssets\PUB\Resource\GameData\Windows")
-        if not game_dir.exists():
+        if not game_dir.is_dir():
             game_dir = Path.home()
         self.game_resource_dir_var = tk.StringVar(value=str(game_dir))
+        
+        # 新增共享的输出/工作目录
+        self.output_dir_var = tk.StringVar(value=str(Path.cwd() / "output"))
 
     def create_widgets(self):
         main_frame = tk.Frame(self.master, bg='#f5f5f5', padx=15, pady=15)
@@ -476,6 +508,20 @@ class App(tk.Frame):
         # 左侧控制面板
         left_frame = tk.Frame(main_frame, bg='#f5f5f5')
         left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+
+        # --- 新增：共享设置区域 ---
+        shared_settings_frame = tk.LabelFrame(left_frame, text="全局设置", font=("Microsoft YaHei", 12, "bold"), fg="#2c3e50", bg='#ffffff', padx=15, pady=12)
+        shared_settings_frame.pack(fill=tk.X, pady=(0, 15))
+
+        UIComponents.create_directory_path_entry(
+            shared_settings_frame, "游戏资源目录", self.game_resource_dir_var,
+            self.select_game_resource_directory, self.open_game_resource_in_explorer
+        )
+        UIComponents.create_directory_path_entry(
+            shared_settings_frame, "输出/工作目录", self.output_dir_var,
+            self.select_output_directory, self.open_output_dir_in_explorer
+        )
+        # --- 共享设置区域结束 ---
 
         self.notebook = self.create_notebook(left_frame)
         
@@ -494,6 +540,47 @@ class App(tk.Frame):
         # 将 logger 和共享变量传递给 Tabs
         self.populate_notebook()
 
+    # --- 新增：共享目录选择和打开的方法 ---
+    def _select_directory(self, var, title):
+        try:
+            current_path = Path(var.get())
+            if not current_path.is_dir(): current_path = Path.home()
+            selected_dir = filedialog.askdirectory(title=title, initialdir=str(current_path))
+            if selected_dir:
+                var.set(str(Path(selected_dir)))
+                self.logger.log(f"已更新目录: {selected_dir}")
+        except Exception as e:
+            messagebox.showerror("错误", f"选择目录时发生错误:\n{e}")
+            
+    def _open_directory_in_explorer(self, path_str, create_if_not_exist=False):
+        try:
+            path = Path(path_str)
+            if not path.is_dir():
+                if create_if_not_exist:
+                    if messagebox.askyesno("提示", f"目录不存在:\n{path}\n\n是否要创建它？"):
+                        path.mkdir(parents=True, exist_ok=True)
+                    else: return
+                else:
+                    messagebox.showwarning("警告", f"路径不存在或不是一个文件夹:\n{path}")
+                    return
+            os.startfile(str(path))
+            self.logger.log(f"已在资源管理器中打开目录: {path}")
+        except Exception as e:
+            messagebox.showerror("错误", f"打开资源管理器时发生错误:\n{e}")
+
+    def select_game_resource_directory(self):
+        self._select_directory(self.game_resource_dir_var, "选择游戏资源目录")
+        
+    def open_game_resource_in_explorer(self):
+        self._open_directory_in_explorer(self.game_resource_dir_var.get())
+
+    def select_output_directory(self):
+        self._select_directory(self.output_dir_var, "选择输出/工作目录")
+
+    def open_output_dir_in_explorer(self):
+        self._open_directory_in_explorer(self.output_dir_var.get(), create_if_not_exist=True)
+    # --- 方法结束 ---
+    
     def create_notebook(self, parent):
         style = ttk.Style()
         style.configure("TNotebook.Tab", font=("Microsoft YaHei", 10, "bold"), padding=[10, 5])
@@ -517,17 +604,17 @@ class App(tk.Frame):
     def populate_notebook(self):
         """创建并添加所有的Tab页面到Notebook。"""
         # Tab 1: 一键更新
-        update_tab = ModUpdateTab(self.notebook, self.logger, game_resource_dir_var=self.game_resource_dir_var)
+        update_tab = ModUpdateTab(self.notebook, self.logger, 
+                                  game_resource_dir_var=self.game_resource_dir_var, 
+                                  output_dir_var=self.output_dir_var)
         self.notebook.add(update_tab, text="  一键更新 Mod  ")
 
         # Tab 2: PNG 替换
-        png_tab = PngReplacementTab(self.notebook, self.logger)
+        png_tab = PngReplacementTab(self.notebook, self.logger, 
+                                    output_dir_var=self.output_dir_var)
         self.notebook.add(png_tab, text="  PNG 文件夹替换  ")
 
         # Tab 3: CRC 工具
-        crc_tab = CrcToolTab(self.notebook, self.logger, game_resource_dir_var=self.game_resource_dir_var)
+        crc_tab = CrcToolTab(self.notebook, self.logger, 
+                             game_resource_dir_var=self.game_resource_dir_var)
         self.notebook.add(crc_tab, text="  CRC 修正工具  ")
-
-        # 可以轻松添加或移除其他Tab，例如Bundle to Bundle恢复功能
-        # b2b_tab = B2BReplacementTab(self.notebook, self.logger)
-        # self.notebook.add(b2b_tab, text="  Bundle 到 Bundle 恢复  ")

@@ -231,102 +231,103 @@ def process_bundle_to_bundle_replacement(new_bundle_path: str, old_bundle_path: 
         log(traceback.format_exc())
         return False, f"处理过程中发生严重错误:\n{e}"
 
-# 一键更新 Mod 的核心处理函数
-def process_mod_update(old_mod_path_str: str, game_resource_dir_str: str, working_dir_str: str, enable_padding: bool, log, perform_crc: bool):
+
+def find_new_bundle_path(old_mod_path_str: str, game_resource_dir_str: str, log):
     """
-    自动化Mod更新流程：
-    1. 根据旧版mod文件名，在游戏资源目录中寻找新版对应文件。
-    2. 创建一个工作目录。
-    3. 执行 B2B 替换，生成一个中间文件。
-    4. (可选) 对文件进行 CRC 修正。
-    5. 文件保存在工作目录中。
+    根据旧版Mod文件，在游戏资源目录中智能查找对应的新版文件。
+    返回 (找到的路径对象, 状态消息) 的元组。
+    """
+    old_mod_path = Path(old_mod_path_str)
+    game_resource_dir = Path(game_resource_dir_str)
+    
+    log(f"正在为 '{old_mod_path.name}' 搜索新版文件...")
+
+    # 1. 通过日期模式确定文件名前缀
+    date_match = re.search(r'\d{4}-\d{2}-\d{2}', old_mod_path.name)
+    if not date_match:
+        msg = f"无法在旧文件名 '{old_mod_path.name}' 中找到日期模式 (YYYY-MM-DD)，无法确定用于匹配的文件前缀。"
+        log(f"  > 失败: {msg}")
+        return None, msg
+
+    prefix_end_index = date_match.start()
+    search_prefix = old_mod_path.name[:prefix_end_index]
+    log(f"  > 已确定文件名前缀: '{search_prefix}...'")
+
+    # 2. 查找所有候选文件
+    candidates = [f for f in game_resource_dir.iterdir() if f.is_file() and f.name.startswith(search_prefix)]
+    if not candidates:
+        msg = f"在游戏资源目录中未找到任何与 '{search_prefix}' 匹配的新版文件。"
+        log(f"  > 失败: {msg}")
+        return None, msg
+    log(f"  > 找到 {len(candidates)} 个候选文件，正在验证内容...")
+
+    # 3. 加载旧Mod获取贴图列表
+    old_env = load_bundle(str(old_mod_path), log)
+    if not old_env:
+        msg = "加载旧版Mod文件失败。"
+        log(f"  > 失败: {msg}")
+        return None, msg
+    
+    old_textures_map = {obj.read().m_Name for obj in old_env.objects if obj.type.name == "Texture2D"}
+    
+    if not old_textures_map:
+        msg = "旧版Mod文件中不包含任何 Texture2D 资源。"
+        log(f"  > 失败: {msg}")
+        return None, msg
+    log(f"  > 旧版Mod包含 {len(old_textures_map)} 个贴图资源。")
+
+    # 4. 遍历候选文件，找到第一个包含匹配贴图的
+    for candidate_path in candidates:
+        log(f"    - 正在检查: {candidate_path.name}")
+        try:
+            env = UnityPy.load(str(candidate_path))
+            if not env: continue
+            
+            for obj in env.objects:
+                if obj.type.name == "Texture2D" and obj.read().m_Name in old_textures_map:
+                    msg = f"成功确定新版文件: {candidate_path.name}"
+                    log(f"  > ✅ {msg}")
+                    return candidate_path, msg
+        except Exception:
+            log(f"    - 警告: 无法加载候选文件 {candidate_path.name}, 已跳过。")
+            continue
+    
+    msg = "在所有候选文件中都未找到与旧版Mod贴图名称匹配的资源。无法确定正确的新版文件。"
+    log(f"  > 失败: {msg}")
+    return None, msg
+
+
+def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_dir_str: str, enable_padding: bool, log, perform_crc: bool):
+    """
+    自动化Mod更新流程。
+    此版本直接接收旧版Mod路径和新版资源路径，不再进行内部查找。
     """
     try:
         log("🚀 开始一键更新流程...")
         old_mod_path = Path(old_mod_path_str)
-        game_resource_dir = Path(game_resource_dir_str)
+        new_bundle_path = Path(new_bundle_path_str) # 直接使用传入的新版文件路径
         base_working_dir = Path(working_dir_str)
 
-        # --- 1. 解析文件名并创建工作目录 ---
-        log(f"分析旧版Mod文件: {old_mod_path.name}")
-        match = re.search(r'(ch\d+)', old_mod_path.name)
-        if not match:
-            log("无法从旧版Mod文件名中解析出角色ID。")
-            char_id = ""
-        else:
-            char_id = match.group(1)
-            log(f"角色ID: {char_id}")
-        
+        log(f"  > 使用旧版 Mod: {old_mod_path.name}")
+        log(f"  > 使用新版资源: {new_bundle_path.name}")
+
+        # --- 1. 创建工作目录 ---
         work_dir = base_working_dir / f"update_{old_mod_path.stem}"
         work_dir.mkdir(parents=True, exist_ok=True)
         log(f"已创建工作目录: {work_dir}")
 
-        # --- 2. 寻找新版对应文件 ---
-        log(f"正在 '{game_resource_dir.name}' 目录中寻找新版文件...")
+        # --- 2. 执行 B2B 替换 ---
+        log("\n--- 阶段 1: Bundle-to-Bundle 替换 ---")
         
-        # 使用正则表达式查找 YYYY-MM-DD 格式的日期来确定文件前缀
-        log("  > 正在通过日期模式 (YYYY-MM-DD) 确定文件名前缀...")
-        date_match = re.search(r'\d{4}-\d{2}-\d{2}', old_mod_path.name)
-
-        if not date_match:
-            return False, f"无法在旧文件名 '{old_mod_path.name}' 中找到日期模式 (YYYY-MM-DD)，无法确定用于匹配的文件前缀。"
-
-        # 文件前缀是日期之前的所有内容
-        prefix_end_index = date_match.start()
-        search_prefix = old_mod_path.name[:prefix_end_index]
-        log(f"  > 成功确定文件名前缀: '{search_prefix}...'")
-
-        candidates = [f for f in game_resource_dir.iterdir() if f.is_file() and f.name.startswith(search_prefix)]
-
-        if not candidates:
-            return False, f"在游戏资源目录中未找到任何与 '{search_prefix}' 匹配的新版文件。"
-
-        log(f"  > 找到 {len(candidates)} 个候选文件。正在验证内容...")
-
-        # --- 3. 验证候选文件，找到包含匹配Texture2D的那个 ---
-        log("  > 正在加载旧版Mod以获取贴图列表...")
-        old_env = load_bundle(str(old_mod_path), log)
-        if not old_env:
-            return False, "加载旧版Mod文件失败。"
-        
+        # 加载旧版 Mod 的贴图数据
+        old_env = load_bundle(old_mod_path_str, log)
         old_textures_map = {}
         for obj in old_env.objects:
             if obj.type.name == "Texture2D":
                 data = obj.read()
                 old_textures_map[data.m_Name] = data.image
-        
-        if not old_textures_map:
-            return False, "旧版Mod文件中不包含任何 Texture2D 资源。"
-        log(f"  > 旧版Mod包含 {len(old_textures_map)} 个贴图资源。")
 
-        new_bundle_path = None
-        for candidate_path in candidates:
-            log(f"    - 正在检查: {candidate_path.name}")
-            try:
-                env = UnityPy.load(str(candidate_path))
-                if not env:
-                    continue
-                
-                found_match = False
-                for obj in env.objects:
-                    if obj.type.name == "Texture2D":
-                        if obj.read().m_Name in old_textures_map:
-                            found_match = True
-                            break
-                if found_match:
-                    new_bundle_path = candidate_path
-                    break
-            except Exception:
-                log(f"    - 警告: 无法加载候选文件 {candidate_path.name}, 已跳过。")
-                continue
-        
-        if not new_bundle_path:
-            return False, "在所有候选文件中都未找到与旧版Mod贴图名称匹配的资源。无法确定正确的新版文件。"
-        
-        log(f"✅ 成功确定新版文件: {new_bundle_path.name}")
-
-        # --- 4. 执行 B2B 替换 ---
-        log("\n--- 阶段 1: Bundle-to-Bundle 替换 ---")
+        # 加载新版文件并替换
         new_env = load_bundle(str(new_bundle_path), log)
         if not new_env:
             return False, "加载新版文件失败。"
@@ -342,9 +343,8 @@ def process_mod_update(old_mod_path_str: str, game_resource_dir_str: str, workin
         
         log(f"  > B2B 替换完成，共处理 {replacement_count} 个贴图。")
 
-        # --- 5. 根据选项决定是否执行CRC修正 ---
+        # --- 3. 根据选项决定是否执行CRC修正 ---
         if perform_crc:
-            # CRC开启时的流程
             intermediate_path = work_dir / f"uncrc_{new_bundle_path.name}"
             log(f"  > 正在保存未修正CRC的中间文件到: {intermediate_path.name}")
             with open(intermediate_path, "wb") as f:
@@ -360,6 +360,7 @@ def process_mod_update(old_mod_path_str: str, game_resource_dir_str: str, workin
             log(f"  > 原始文件 (用于CRC校验): {new_bundle_path.name}")
             log(f"  > 待修正文件: {final_path.name}")
             
+            # 注意：这里的原始文件应该是新版游戏资源文件
             is_crc_success = CRCUtils.manipulate_crc(str(new_bundle_path), str(final_path), enable_padding)
 
             if not is_crc_success:
@@ -376,7 +377,6 @@ def process_mod_update(old_mod_path_str: str, game_resource_dir_str: str, workin
 
             return True, f"一键更新成功！\n\n最终文件保存在工作目录中:\n{final_path}\n\n(同时保留了未修正CRC的版本 '{intermediate_path.name}')"
         else:
-            # CRC关闭时的流程
             final_path = work_dir / new_bundle_path.name
             log(f"  > CRC修正已跳过。正在直接保存最终文件到: {final_path.name}")
             with open(final_path, "wb") as f:
