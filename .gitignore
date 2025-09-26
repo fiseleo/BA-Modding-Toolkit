@@ -1,6 +1,8 @@
 test
 output
 build
+dist
+main.spec
 testbundle
 old
 __pycache__

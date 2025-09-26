@@ -25,7 +25,10 @@ def load_bundle(bundle_path: str, log):
         log("  ✅ 直接加载成功。")
         return env
     except Exception as e:
-        log(f"  > 直接加载失败: {e}。将尝试作为CRC修正后的文件加载。")
+        if 'insufficient space' in str(e):
+            log(f"  > 直接加载失败，将尝试作为CRC修正后的文件加载。")
+        else:
+            log(f"  > 直接加载失败: {e}。将尝试作为CRC修正后的文件加载。")
 
     # 如果直接加载失败，读取文件内容到内存
     try:

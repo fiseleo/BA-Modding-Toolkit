@@ -23,7 +23,7 @@ class Theme:
     MUTED_BG = '#e9ecef' # 用于拖放区等不活跃背景
 
     # 文本颜色
-    TEXT_TITLE = '#2c3e50'
+    TEXT_TITLE = '#080808'
     TEXT_NORMAL = '#34495e'
     TEXT_LIGHT = '#ffffff'
     
@@ -142,12 +142,13 @@ class TabFrame(ttk.Frame):
 # --- 具体 Tab 实现 ---
 
 class ModUpdateTab(TabFrame):
-    def create_widgets(self, game_resource_dir_var, output_dir_var):
+    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var):
         self.old_mod_path = None
         self.new_mod_path = None 
         self.final_output_path = None # 新增：用于存储成功生成的文件路径
-        self.enable_padding = tk.BooleanVar(value=False)
-        self.enable_crc_correction = tk.BooleanVar(value=True)
+        self.enable_padding = enable_padding_var
+        self.enable_crc_correction = enable_crc_correction_var
+        self.create_backup = create_backup_var
 
         # 接收共享的变量
         self.game_resource_dir_var = game_resource_dir_var
@@ -179,23 +180,7 @@ class ModUpdateTab(TabFrame):
         button_container.pack()
         tk.Button(button_container, text="手动浏览...", command=self.browse_new_mod, font=("Microsoft YaHei", 9), bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT).pack(side=tk.LEFT, padx=5)
 
-        # 3. 选项和操作
-        options_frame = tk.LabelFrame(self, text="选项与操作", font=("Microsoft YaHei", 11, "bold"), fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
-        options_frame.pack(fill=tk.X, pady=(10, 15))
-        
-        checkbox_frame = tk.Frame(options_frame, bg=Theme.FRAME_BG)
-        checkbox_frame.pack(pady=5)
-        
-        padding_checkbox = tk.Checkbutton(checkbox_frame, text="添加私货", variable=self.enable_padding, font=("Microsoft YaHei", 9), bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG)
-        
-        def toggle_padding_checkbox_state():
-            state = tk.NORMAL if self.enable_crc_correction.get() else tk.DISABLED
-            padding_checkbox.config(state=state)
-
-        crc_checkbox = tk.Checkbutton(checkbox_frame, text="CRC修正", variable=self.enable_crc_correction, font=("Microsoft YaHei", 9), bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG, command=toggle_padding_checkbox_state)
-        
-        crc_checkbox.pack(side=tk.LEFT, padx=10)
-        padding_checkbox.pack(side=tk.LEFT, padx=10)
+        # 3. 选项和操作 (此区域的复选框已移至全局设置)
 
         # --- 新增: 操作按钮区域 ---
         action_button_frame = tk.Frame(self) # 使用与父框架相同的背景色
@@ -350,9 +335,9 @@ class ModUpdateTab(TabFrame):
 
     def replace_original(self):
         """执行实际的文件替换操作（在线程中）"""
-        if not messagebox.askyesno("严重警告", 
+        if not messagebox.askyesno("警告", 
                                    f"此操作将覆盖游戏目录中的原始文件:\n\n{self.new_mod_path.name}\n\n"
-                                   "程序会尝试创建一个 .backup 后缀的备份文件，但强烈建议您手动备份！\n\n确定要继续吗？"):
+                                   "如果要继续，请确保已备份原始文件，或是在全局设置中开启备份功能。\n\n确定要继续吗？"):
             return
 
         self.logger.log("\n" + "="*50)
@@ -363,17 +348,23 @@ class ModUpdateTab(TabFrame):
             target_file = self.new_mod_path
             # 源文件是刚刚生成的新Mod
             source_file = self.final_output_path
-
-            backup_path = target_file.with_suffix(target_file.suffix + '.backup')
-            self.logger.log(f"  > 正在备份原始文件到: {backup_path.name}")
-            shutil.copy2(target_file, backup_path)
+            
+            backup_message = ""
+            if self.create_backup.get():
+                backup_path = target_file.with_suffix(target_file.suffix + '.backup')
+                self.logger.log(f"  > 正在备份原始文件到: {backup_path.name}")
+                shutil.copy2(target_file, backup_path)
+                backup_message = f"\n\n原始文件备份至:\n{backup_path.name}"
+            else:
+                self.logger.log("  > 已根据设置跳过创建备份文件。")
+                backup_message = "\n\n(已跳过创建备份)"
             
             self.logger.log(f"  > 正在用 '{source_file.name}' 覆盖 '{target_file.name}'...")
             shutil.copy2(source_file, target_file)
             
             self.logger.log("✅ 原始文件已成功覆盖！")
             self.logger.status("文件覆盖完成")
-            messagebox.showinfo("成功", f"游戏原始文件已成功覆盖！\n\n原始文件备份至:\n{backup_path.name}")
+            messagebox.showinfo("成功", f"游戏原始文件已成功覆盖！{backup_message}")
 
         except Exception as e:
             self.logger.log(f"❌ 文件覆盖失败: {e}")
@@ -382,20 +373,21 @@ class ModUpdateTab(TabFrame):
 
 
 class PngReplacementTab(TabFrame):
-    def create_widgets(self, output_dir_var):
+    def create_widgets(self, output_dir_var, create_backup_var):
         self.bundle_path = None
         self.folder_path = None
         self.output_path = tk.StringVar()
+        self.create_backup = create_backup_var
         # 接收共享的输出目录变量
         self.output_dir_var = output_dir_var
+
+        _, self.folder_label = UIComponents.create_folder_drop_zone(
+            self, "PNG 图片文件夹", self.drop_folder, self.browse_folder
+        )
 
         _, self.bundle_label = UIComponents.create_file_drop_zone(
             self, "目标 Bundle 文件", self.drop_bundle, self.browse_bundle
         )
-        _, self.folder_label = UIComponents.create_folder_drop_zone(
-            self, "PNG 图片文件夹", self.drop_folder, self.browse_folder
-        )
-        # 输出路径输入框已被移除，路径将自动生成到主界面的输出目录中
         
         run_button = tk.Button(self, text="开始替换", command=self.run_replacement_thread, font=("Microsoft YaHei", 12, "bold"), bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=20, pady=10)
         run_button.pack(pady=20)
@@ -438,7 +430,11 @@ class PngReplacementTab(TabFrame):
         self.logger.status("正在处理中，请稍候...")
         
         success, message = processing.process_bundle_replacement(
-            str(self.bundle_path), str(self.folder_path), self.output_path.get(), self.logger.log
+            str(self.bundle_path), 
+            str(self.folder_path), 
+            self.output_path.get(), 
+            self.logger.log,
+            create_backup_file=self.create_backup.get()
         )
         
         if success: messagebox.showinfo("成功", message)
@@ -447,10 +443,11 @@ class PngReplacementTab(TabFrame):
 
 
 class CrcToolTab(TabFrame):
-    def create_widgets(self, game_resource_dir_var):
+    def create_widgets(self, game_resource_dir_var, enable_padding_var, create_backup_var):
         self.original_path = None
         self.modified_path = None
-        self.enable_padding = tk.BooleanVar(value=False)
+        self.enable_padding = enable_padding_var
+        self.create_backup = create_backup_var
         # 接收共享的游戏资源目录变量
         self.game_resource_dir_var = game_resource_dir_var
 
@@ -478,7 +475,6 @@ class CrcToolTab(TabFrame):
         # 3. 选项与操作
         options_frame = tk.LabelFrame(self, text="选项与操作", font=("Microsoft YaHei", 11, "bold"), fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
         options_frame.pack(fill=tk.X, pady=(0, 10))
-        tk.Checkbutton(options_frame, text="添加私货", variable=self.enable_padding, font=("Microsoft YaHei", 9), bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(pady=5)
         
         button_frame = tk.Frame(options_frame, bg=Theme.FRAME_BG)
         button_frame.pack(fill=tk.X, pady=10)
@@ -542,15 +538,23 @@ class CrcToolTab(TabFrame):
         self.logger.log("\n" + "="*50); self.logger.log("模式：开始CRC修正过程...")
         self.logger.status("正在进行CRC修正...")
         try:
-            backup_path = self.modified_path.with_suffix(self.modified_path.suffix + '.bak')
-            shutil.copy2(self.modified_path, backup_path)
-            self.logger.log(f"已创建备份文件: {backup_path.name}")
+            backup_message = ""
+            if self.create_backup.get():
+                # 创建备份文件
+                backup_path = self.modified_path.with_suffix(self.modified_path.suffix + '.bak')
+                shutil.copy2(self.modified_path, backup_path)
+                self.logger.log(f"已创建备份文件: {backup_path.name}")
+                backup_message = f"\n\n原始版本已备份至:\n{backup_path.name}"
+            else:
+                self.logger.log("已根据设置跳过创建备份文件。")
+                backup_message = "\n\n(已跳过创建备份)"
             
+            # 修正文件CRC
             success = CRCUtils.manipulate_crc(str(self.original_path), str(self.modified_path), self.enable_padding.get())
             
             if success:
                 self.logger.log("✅ CRC修正成功！")
-                messagebox.showinfo("成功", f"CRC 修正成功！\n修改后的文件已更新。\n\n原始版本已备份至:\n{backup_path.name}")
+                messagebox.showinfo("成功", f"CRC 修正成功！\n修改后的文件已更新。{backup_message}")
             else:
                 self.logger.log("❌ CRC修正失败")
                 messagebox.showerror("失败", "CRC 修正失败。")
@@ -590,12 +594,19 @@ class CrcToolTab(TabFrame):
         self.logger.log("\n" + "="*50); self.logger.log("模式：开始替换原始文件...")
         self.logger.status("正在替换文件...")
         try:
-            backup = self.original_path.with_suffix(self.original_path.suffix + '.backup')
-            shutil.copy2(self.original_path, backup)
-            self.logger.log(f"已创建原始文件备份: {backup.name}")
+            backup_message = ""
+            if self.create_backup.get():
+                backup = self.original_path.with_suffix(self.original_path.suffix + '.backup')
+                shutil.copy2(self.original_path, backup)
+                self.logger.log(f"已创建原始文件备份: {backup.name}")
+                backup_message = f"\n\n原始文件备份: {backup.name}"
+            else:
+                self.logger.log("已根据设置跳过创建备份文件。")
+                backup_message = "\n\n(已跳过创建备份)"
+
             shutil.copy2(self.modified_path, self.original_path)
             self.logger.log("✅ 原始文件已成功替换！")
-            messagebox.showinfo("成功", f"原始文件已成功替换！\n\n原始文件备份: {backup.name}")
+            messagebox.showinfo("成功", f"原始文件已成功替换！{backup_message}")
         except Exception as e:
             self.logger.log(f"❌ 文件替换失败: {e}")
             messagebox.showerror("错误", f"文件替换过程中发生错误:\n{e}")
@@ -613,7 +624,7 @@ class App(tk.Frame):
         self.logger.status("准备就绪")
 
     def setup_main_window(self):
-        self.master.title("Unity Modding 工具集")
+        self.master.title("BA Modding Toolkit")
         self.master.geometry("1200x900")
         self.master.configure(bg=Theme.WINDOW_BG)
 
@@ -627,6 +638,11 @@ class App(tk.Frame):
         
         # 新增共享的输出/工作目录
         self.output_dir_var = tk.StringVar(value=str(Path.cwd() / "output"))
+        
+        # 新增：全局选项变量
+        self.enable_padding_var = tk.BooleanVar(value=False)
+        self.enable_crc_correction_var = tk.BooleanVar(value=True)
+        self.create_backup_var = tk.BooleanVar(value=True)
 
     def create_widgets(self):
         main_frame = tk.Frame(self.master, bg=Theme.WINDOW_BG, padx=15, pady=15)
@@ -650,6 +666,22 @@ class App(tk.Frame):
             shared_settings_frame, "输出/工作目录", self.output_dir_var,
             self.select_output_directory, self.open_output_dir_in_explorer
         )
+        
+        # --- 全局选项 ---
+        global_options_frame = tk.Frame(shared_settings_frame, bg=Theme.FRAME_BG)
+        global_options_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        self.padding_checkbox = tk.Checkbutton(global_options_frame, text="添加私货", variable=self.enable_padding_var, font=("Microsoft YaHei", 9), bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG)
+        
+        crc_checkbox = tk.Checkbutton(global_options_frame, text="CRC修正", variable=self.enable_crc_correction_var, font=("Microsoft YaHei", 9), bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG, command=self.toggle_padding_checkbox_state)
+        
+        backup_checkbox = tk.Checkbutton(global_options_frame, text="创建备份", variable=self.create_backup_var, font=("Microsoft YaHei", 9), bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG)
+
+        crc_checkbox.pack(side=tk.LEFT, padx=(0, 20))
+        self.padding_checkbox.pack(side=tk.LEFT, padx=(0, 20))
+        backup_checkbox.pack(side=tk.LEFT)
+        # --- 全局选项结束 ---
+        
         # --- 共享设置区域结束 ---
 
         self.notebook = self.create_notebook(left_frame)
@@ -668,6 +700,19 @@ class App(tk.Frame):
         
         # 将 logger 和共享变量传递给 Tabs
         self.populate_notebook()
+        
+        # 初始化 padding checkbox 状态
+        self.toggle_padding_checkbox_state()
+
+    def toggle_padding_checkbox_state(self):
+        """根据CRC修正复选框的状态，启用或禁用添加私货复选框，并取消勾选"""
+        if self.enable_crc_correction_var.get():
+            # CRC修正启用时，添加私货框可用
+            self.padding_checkbox.config(state=tk.NORMAL)
+        else:
+            # CRC修正禁用时，添加私货框禁用并取消勾选
+            self.enable_padding_var.set(False)
+            self.padding_checkbox.config(state=tk.DISABLED)
 
     # --- 新增：共享目录选择和打开的方法 ---
     def _select_directory(self, var, title):
@@ -731,7 +776,7 @@ class App(tk.Frame):
         log_frame = tk.LabelFrame(parent, text="Log", font=("Microsoft YaHei", 11, "bold"), fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
         log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        log_text = tk.Text(log_frame, wrap=tk.WORD, bg=Theme.LOG_BG, fg=Theme.LOG_FG, font=("Consolas", 10), relief=tk.FLAT, bd=0, padx=10, pady=10, insertbackground=Theme.LOG_FG)
+        log_text = tk.Text(log_frame, wrap=tk.WORD, bg=Theme.LOG_BG, fg=Theme.LOG_FG, font=("SimSun", 10), relief=tk.FLAT, bd=0, padx=10, pady=10, insertbackground=Theme.LOG_FG)
         scrollbar = tk.Scrollbar(log_frame, orient=tk.VERTICAL, command=log_text.yview)
         log_text.configure(yscrollcommand=scrollbar.set)
         
@@ -742,18 +787,24 @@ class App(tk.Frame):
 
     def populate_notebook(self):
         """创建并添加所有的Tab页面到Notebook。"""
-        # Tab 1: 一键更新
+        # Tab: 一键更新
         update_tab = ModUpdateTab(self.notebook, self.logger, 
                                   game_resource_dir_var=self.game_resource_dir_var, 
-                                  output_dir_var=self.output_dir_var)
+                                  output_dir_var=self.output_dir_var,
+                                  enable_padding_var=self.enable_padding_var,
+                                  enable_crc_correction_var=self.enable_crc_correction_var,
+                                  create_backup_var=self.create_backup_var)
         self.notebook.add(update_tab, text="一键更新 Mod")
 
-        # Tab 2: PNG 替换
-        png_tab = PngReplacementTab(self.notebook, self.logger, 
-                                    output_dir_var=self.output_dir_var)
-        self.notebook.add(png_tab, text="PNG 文件夹替换")
-
-        # Tab 3: CRC 工具
+        # Tab: CRC 工具
         crc_tab = CrcToolTab(self.notebook, self.logger, 
-                             game_resource_dir_var=self.game_resource_dir_var)
+                             game_resource_dir_var=self.game_resource_dir_var,
+                             enable_padding_var=self.enable_padding_var,
+                             create_backup_var=self.create_backup_var)
         self.notebook.add(crc_tab, text="CRC 修正工具")
+
+        # Tab: PNG 替换
+        png_tab = PngReplacementTab(self.notebook, self.logger, 
+                                    output_dir_var=self.output_dir_var,
+                                    create_backup_var=self.create_backup_var)
+        self.notebook.add(png_tab, text="PNG 文件夹替换")
