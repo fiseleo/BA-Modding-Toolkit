@@ -47,6 +47,11 @@ class Theme:
     STATUS_BAR_BG = '#34495e'
     STATUS_BAR_FG = '#ecf0f1'
 
+    # 字体
+    FRAME_FONT = ("Microsoft YaHei", 11, "bold")
+    INPUT_FONT = ("Microsoft YaHei", 9)
+    BUTTON_FONT = ("Microsoft YaHei", 10, "bold")
+
 
 # --- UI 组件工厂 ---
 
@@ -55,55 +60,57 @@ class UIComponents:
 
     @staticmethod
     def create_file_drop_zone(parent, title, drop_cmd, browse_cmd):
-        frame = tk.LabelFrame(parent, text=title, font=("Microsoft YaHei", 11, "bold"), fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
+        frame = tk.LabelFrame(parent, text=title, font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
         frame.pack(fill=tk.X, pady=(0, 10))
 
-        label = tk.Label(frame, text="将文件拖放到此处\n或点击下方按钮选择", relief=tk.GROOVE, height=4, bg=Theme.MUTED_BG, fg=Theme.TEXT_NORMAL, font=("Microsoft YaHei", 9))
+        label = tk.Label(frame, text="将文件拖放到此处\n或点击下方按钮选择", relief=tk.GROOVE, height=4, bg=Theme.MUTED_BG, fg=Theme.TEXT_NORMAL, font=Theme.INPUT_FONT, justify=tk.LEFT)
         label.pack(fill=tk.X, pady=(0, 8))
         label.drop_target_register(DND_FILES)
         label.dnd_bind('<<Drop>>', drop_cmd)
+        label.bind('<Configure>', lambda e: e.widget.config(wraplength=e.width - 10))
 
-        button = tk.Button(frame, text="浏览文件...", command=browse_cmd, font=("Microsoft YaHei", 9), bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
+        button = tk.Button(frame, text="浏览文件...", command=browse_cmd, font=Theme.INPUT_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
         button.pack()
         return frame, label
 
     @staticmethod
     def create_folder_drop_zone(parent, title, drop_cmd, browse_cmd):
-        frame = tk.LabelFrame(parent, text=title, font=("Microsoft YaHei", 11, "bold"), fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
+        frame = tk.LabelFrame(parent, text=title, font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
         frame.pack(fill=tk.X, pady=(0, 10))
 
-        label = tk.Label(frame, text="将文件夹拖放到此处\n或点击下方按钮选择", relief=tk.GROOVE, height=4, bg=Theme.MUTED_BG, fg=Theme.TEXT_NORMAL, font=("Microsoft YaHei", 9))
+        label = tk.Label(frame, text="将文件夹拖放到此处\n或点击下方按钮选择", relief=tk.GROOVE, height=4, bg=Theme.MUTED_BG, fg=Theme.TEXT_NORMAL, font=Theme.INPUT_FONT, justify=tk.LEFT)
         label.pack(fill=tk.X, pady=(0, 8))
         label.drop_target_register(DND_FILES)
         label.dnd_bind('<<Drop>>', drop_cmd)
+        label.bind('<Configure>', lambda e: e.widget.config(wraplength=e.width - 10))
 
-        button = tk.Button(frame, text="浏览文件夹...", command=browse_cmd, font=("Microsoft YaHei", 9), bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
+        button = tk.Button(frame, text="浏览文件夹...", command=browse_cmd, font=Theme.INPUT_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
         button.pack()
         return frame, label
 
     @staticmethod
     def create_output_path_entry(parent, title, textvariable, save_cmd):
-        frame = tk.LabelFrame(parent, text=title, font=("Microsoft YaHei", 11, "bold"), fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
+        frame = tk.LabelFrame(parent, text=title, font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
         frame.pack(fill=tk.X, pady=(10, 15))
 
-        entry = tk.Entry(frame, textvariable=textvariable, font=("Microsoft YaHei", 9), bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1)
+        entry = tk.Entry(frame, textvariable=textvariable, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1)
         entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5), ipady=3)
 
-        button = tk.Button(frame, text="另存为...", command=save_cmd, font=("Microsoft YaHei", 9), bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
+        button = tk.Button(frame, text="另存为...", command=save_cmd, font=Theme.INPUT_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
         button.pack(side=tk.RIGHT)
         return frame
 
     @staticmethod
     def create_directory_path_entry(parent, title, textvariable, select_cmd, open_cmd):
-        frame = tk.LabelFrame(parent, text=title, font=("Microsoft YaHei", 11, "bold"), fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=10)
+        frame = tk.LabelFrame(parent, text=title, font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=10)
         frame.pack(fill=tk.X, pady=(0, 10))
 
-        entry = tk.Entry(frame, textvariable=textvariable, font=("Microsoft YaHei", 9), bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1)
+        entry = tk.Entry(frame, textvariable=textvariable, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1)
         entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5), ipady=3)
 
-        select_btn = tk.Button(frame, text="📂", command=select_cmd, font=("Microsoft YaHei", 10), bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=3)
+        select_btn = tk.Button(frame, text="📂", command=select_cmd, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=3)
         select_btn.pack(side=tk.LEFT, padx=(0, 5))
-        open_btn = tk.Button(frame, text="📁", command=open_cmd, font=("Microsoft YaHei", 10), bg=Theme.BUTTON_SECONDARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=3)
+        open_btn = tk.Button(frame, text="📁", command=open_cmd, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SECONDARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=3)
         open_btn.pack(side=tk.LEFT)
         return frame
     
@@ -160,40 +167,33 @@ class ModUpdateTab(TabFrame):
         )
         
         # 2. 新版游戏资源文件
-        new_mod_frame = tk.LabelFrame(self, text="新版游戏资源 Bundle", font=("Microsoft YaHei", 11, "bold"), fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
-        new_mod_frame.pack(fill=tk.X, pady=(0, 10))
+        new_mod_frame, self.new_mod_label = UIComponents.create_file_drop_zone(
+            self, "新版游戏资源 Bundle", self.drop_new_mod, self.browse_new_mod
+        )
+        # 自定义拖放区的提示文本，使其更具指导性
+        self.new_mod_label.config(text="拖入旧版Mod后将自动查找新版资源\n或手动拖放/浏览文件")
 
-        # 显示游戏资源目录路径
+        # 创建并插入用于显示游戏资源目录的额外组件
         auto_find_frame = tk.Frame(new_mod_frame, bg=Theme.FRAME_BG)
-        auto_find_frame.pack(fill=tk.X, pady=(0, 8))
+        # 使用 pack 的 before 参数，将此组件插入到拖放区标签(self.new_mod_label)的上方
+        auto_find_frame.pack(fill=tk.X, pady=(0, 8), before=self.new_mod_label)
         tk.Label(auto_find_frame, text="游戏资源目录:", bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL).pack(side=tk.LEFT, padx=(0,5))
-        tk.Entry(auto_find_frame, textvariable=self.game_resource_dir_var, font=("Microsoft YaHei", 9), bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1, state='readonly').pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Entry(auto_find_frame, textvariable=self.game_resource_dir_var, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1, state='readonly').pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # 新版文件的拖放区 (修改提示文本)
-        self.new_mod_label = tk.Label(new_mod_frame, text="拖入旧版Mod后将自动查找新版资源\n或手动拖放/浏览文件", relief=tk.GROOVE, height=4, bg=Theme.MUTED_BG, fg=Theme.TEXT_NORMAL, font=("Microsoft YaHei", 9))
-        self.new_mod_label.pack(fill=tk.X, pady=(4, 8))
-        self.new_mod_label.drop_target_register(DND_FILES)
-        self.new_mod_label.dnd_bind('<<Drop>>', self.drop_new_mod)
-        
-        # 功能按钮 (移除自动查找按钮)
-        button_container = tk.Frame(new_mod_frame, bg=Theme.FRAME_BG)
-        button_container.pack()
-        tk.Button(button_container, text="手动浏览...", command=self.browse_new_mod, font=("Microsoft YaHei", 9), bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT).pack(side=tk.LEFT, padx=5)
+        # 3. 选项和操作
 
-        # 3. 选项和操作 (此区域的复选框已移至全局设置)
-
-        # --- 新增: 操作按钮区域 ---
+        # 操作按钮区域
         action_button_frame = tk.Frame(self) # 使用与父框架相同的背景色
         action_button_frame.pack(fill=tk.X, pady=10)
         action_button_frame.grid_columnconfigure((0, 1), weight=1)
 
-        run_button = tk.Button(action_button_frame, text="🚀 开始一键更新", command=self.run_update_thread, font=("Microsoft YaHei", 12, "bold"), bg=Theme.BUTTON_ACCENT_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8)
+        run_button = tk.Button(action_button_frame, text="🚀 开始一键更新", command=self.run_update_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_ACCENT_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8)
         run_button.grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=10)
         
-        self.replace_button = tk.Button(action_button_frame, text="🔥 覆盖游戏原文件", command=self.replace_original_thread, font=("Microsoft YaHei", 12, "bold"), bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8, state=tk.DISABLED)
+        self.replace_button = tk.Button(action_button_frame, text="🔥 覆盖游戏原文件", command=self.replace_original_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8, state=tk.DISABLED)
         self.replace_button.grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=10)
 
-    # --- 修改: 旧版 Mod 的处理方法，增加自动查找回调 ---
+    # 旧版 Mod 的处理方法，增加自动查找回调
     def drop_old_mod(self, event):
         path = Path(event.data.strip('{}'))
         self.set_file_path('old_mod_path', self.old_mod_label, path, "旧版 Mod", self.auto_find_new_bundle)
@@ -215,7 +215,7 @@ class ModUpdateTab(TabFrame):
     def set_new_mod_file(self, path: Path):
         """统一设置新版Mod文件的路径和UI显示"""
         self.new_mod_path = path
-        self.new_mod_label.config(text=f"已选择新版资源:\n{path.name}", fg=Theme.COLOR_SUCCESS)
+        self.new_mod_label.config(text=f"已选择新版资源:{path.name}", fg=Theme.COLOR_SUCCESS)
         self.logger.log(f"已加载新版资源: {path.name}")
         self.logger.status("已加载新版资源")
 
@@ -389,7 +389,7 @@ class PngReplacementTab(TabFrame):
             self, "目标 Bundle 文件", self.drop_bundle, self.browse_bundle
         )
         
-        run_button = tk.Button(self, text="开始替换", command=self.run_replacement_thread, font=("Microsoft YaHei", 12, "bold"), bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=20, pady=10)
+        run_button = tk.Button(self, text="开始替换", command=self.run_replacement_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=20, pady=10)
         run_button.pack(pady=20)
 
     def drop_bundle(self, event): self.set_file_path('bundle_path', self.bundle_label, Path(event.data.strip('{}')), "目标 Bundle", self.auto_set_output)
@@ -451,52 +451,55 @@ class CrcToolTab(TabFrame):
         # 接收共享的游戏资源目录变量
         self.game_resource_dir_var = game_resource_dir_var
 
-        # 2. 修改后文件
+        # 1. 修改后文件
         _, self.modified_label = UIComponents.create_file_drop_zone(
             self, "修改后文件 (待修正)", self.drop_modified, self.browse_modified
         )
 
-        # 1. 原始文件
-        orig_frame = tk.LabelFrame(self, text="原始文件 (用于CRC校验)", font=("Microsoft YaHei", 11, "bold"), fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=10)
-        orig_frame.pack(fill=tk.X, pady=(0, 10))
+        # 2. 原始文件 - 使用与new_mod_label相同的方式
+        original_frame, self.original_label = UIComponents.create_file_drop_zone(
+            self, "原始文件 (用于CRC校验)", self.drop_original, self.browse_original
+        )
         
-        # 显示共享的自动寻找路径
-        auto_find_frame = tk.Frame(orig_frame, bg=Theme.FRAME_BG)
-        auto_find_frame.pack(fill=tk.X, pady=(0, 8))
+        # 自定义拖放区的提示文本，使其更具指导性
+        self.original_label.config(text="拖入修改后文件后将自动查找原始文件\n或手动拖放/浏览文件")
+        
+        # 创建并插入用于显示游戏资源目录的额外组件
+        auto_find_frame = tk.Frame(original_frame, bg=Theme.FRAME_BG)
+        # 使用 pack 的 before 参数，将此组件插入到拖放区标签(self.original_label)的上方
+        auto_find_frame.pack(fill=tk.X, pady=(0, 8), before=self.original_label)
         tk.Label(auto_find_frame, text="自动寻找路径:", bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL).pack(side=tk.LEFT, padx=(0,5))
-        tk.Entry(auto_find_frame, textvariable=self.game_resource_dir_var, font=("Microsoft YaHei", 9), bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1, state='readonly').pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        self.original_label = tk.Label(orig_frame, text="将原始文件拖放到此处\n或点击下方按钮选择", relief=tk.GROOVE, height=3, bg=Theme.MUTED_BG, fg=Theme.TEXT_NORMAL, font=("Microsoft YaHei", 9))
-        self.original_label.pack(fill=tk.X, pady=(8, 8))
-        self.original_label.drop_target_register(DND_FILES)
-        self.original_label.dnd_bind('<<Drop>>', self.drop_original)
-        tk.Button(orig_frame, text="浏览原始文件...", command=self.browse_original, font=("Microsoft YaHei", 9), bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT).pack()
+        tk.Entry(auto_find_frame, textvariable=self.game_resource_dir_var, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1, state='readonly').pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # 3. 选项与操作
-        options_frame = tk.LabelFrame(self, text="选项与操作", font=("Microsoft YaHei", 11, "bold"), fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
+        options_frame = tk.LabelFrame(self, text="选项与操作", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
         options_frame.pack(fill=tk.X, pady=(0, 10))
         
         button_frame = tk.Frame(options_frame, bg=Theme.FRAME_BG)
         button_frame.pack(fill=tk.X, pady=10)
         button_frame.grid_columnconfigure((0, 1, 2), weight=1)
         
-        tk.Button(button_frame, text="运行CRC修正", command=self.run_correction_thread, font=("Microsoft YaHei", 10, "bold"), bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=0, sticky="ew", padx=5)
-        tk.Button(button_frame, text="计算CRC值", command=self.calculate_values_thread, font=("Microsoft YaHei", 10, "bold"), bg=Theme.BUTTON_WARNING_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=1, sticky="ew", padx=5)
-        tk.Button(button_frame, text="替换原始文件", command=self.replace_original_thread, font=("Microsoft YaHei", 10, "bold"), bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=2, sticky="ew", padx=5)
+        tk.Button(button_frame, text="运行CRC修正", command=self.run_correction_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=0, sticky="ew", padx=5)
+        tk.Button(button_frame, text="计算CRC值", command=self.calculate_values_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_WARNING_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=1, sticky="ew", padx=5)
+        tk.Button(button_frame, text="替换原始文件", command=self.replace_original_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=2, sticky="ew", padx=5)
 
-    def drop_original(self, event): self.set_original_file(Path(event.data.strip('{}')))
+    def drop_original(self, event): 
+        self.set_original_file(Path(event.data.strip('{}')))
     def browse_original(self):
-        p = filedialog.askopenfilename(title="请选择原始文件");
-        if p: self.set_original_file(Path(p))
+        p = filedialog.askopenfilename(title="请选择原始文件")
+        if p: 
+            self.set_original_file(Path(p))
     
-    def drop_modified(self, event): self.set_modified_file(Path(event.data.strip('{}')))
+    def drop_modified(self, event): 
+        self.set_modified_file(Path(event.data.strip('{}')))
     def browse_modified(self):
-        p = filedialog.askopenfilename(title="请选择修改后文件");
-        if p: self.set_modified_file(Path(p))
+        p = filedialog.askopenfilename(title="请选择修改后文件")
+        if p: 
+            self.set_modified_file(Path(p))
 
     def set_original_file(self, path: Path):
         self.original_path = path
-        self.original_label.config(text=f"原始文件:\n{path.name}", fg=Theme.COLOR_SUCCESS)
+        self.original_label.config(text=f"原始文件: {path.name}", fg=Theme.COLOR_SUCCESS)
         self.logger.log(f"已加载CRC原始文件: {path.name}")
         self.logger.status("已加载CRC原始文件")
 
@@ -517,7 +520,6 @@ class CrcToolTab(TabFrame):
                     self.logger.log(f"⚠️ 警告: 未能在 '{game_dir.name}' 中找到对应的原始文件。")
         else:
             self.logger.log("⚠️ 警告: 未设置游戏资源目录，无法自动寻找原始文件。")
-
 
     def _validate_paths(self):
         if not self.original_path or not self.modified_path:
@@ -645,17 +647,17 @@ class App(tk.Frame):
         self.create_backup_var = tk.BooleanVar(value=True)
 
     def create_widgets(self):
-        main_frame = tk.Frame(self.master, bg=Theme.WINDOW_BG, padx=15, pady=15)
+        main_frame = tk.Frame(self.master, bg=Theme.WINDOW_BG, padx=10, pady=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
         main_frame.grid_columnconfigure(0, weight=1); main_frame.grid_columnconfigure(1, weight=1)
         main_frame.grid_rowconfigure(0, weight=1)
 
         # 左侧控制面板
         left_frame = tk.Frame(main_frame, bg=Theme.WINDOW_BG)
-        left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
 
         # --- 新增：共享设置区域 ---
-        shared_settings_frame = tk.LabelFrame(left_frame, text="全局设置", font=("Microsoft YaHei", 12, "bold"), fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
+        shared_settings_frame = tk.LabelFrame(left_frame, text="全局设置", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
         shared_settings_frame.pack(fill=tk.X, pady=(0, 15))
 
         UIComponents.create_directory_path_entry(
@@ -671,11 +673,11 @@ class App(tk.Frame):
         global_options_frame = tk.Frame(shared_settings_frame, bg=Theme.FRAME_BG)
         global_options_frame.pack(fill=tk.X, pady=(10, 0))
         
-        self.padding_checkbox = tk.Checkbutton(global_options_frame, text="添加私货", variable=self.enable_padding_var, font=("Microsoft YaHei", 9), bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG)
+        self.padding_checkbox = tk.Checkbutton(global_options_frame, text="添加私货", variable=self.enable_padding_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG)
         
-        crc_checkbox = tk.Checkbutton(global_options_frame, text="CRC修正", variable=self.enable_crc_correction_var, font=("Microsoft YaHei", 9), bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG, command=self.toggle_padding_checkbox_state)
+        crc_checkbox = tk.Checkbutton(global_options_frame, text="CRC修正", variable=self.enable_crc_correction_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG, command=self.toggle_padding_checkbox_state)
         
-        backup_checkbox = tk.Checkbutton(global_options_frame, text="创建备份", variable=self.create_backup_var, font=("Microsoft YaHei", 9), bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG)
+        backup_checkbox = tk.Checkbutton(global_options_frame, text="创建备份", variable=self.create_backup_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG)
 
         crc_checkbox.pack(side=tk.LEFT, padx=(0, 20))
         self.padding_checkbox.pack(side=tk.LEFT, padx=(0, 20))
@@ -687,13 +689,13 @@ class App(tk.Frame):
         self.notebook = self.create_notebook(left_frame)
         
         # 右侧日志区域
-        right_frame = tk.Frame(main_frame, bg=Theme.FRAME_BG, relief=tk.RAISED, bd=2)
+        right_frame = tk.Frame(main_frame, bg=Theme.FRAME_BG, relief=tk.RAISED, bd=1)
         right_frame.grid(row=0, column=1, sticky="nsew")
         self.log_text = self.create_log_area(right_frame)
 
         # 底部状态栏
         self.status_label = tk.Label(self.master, text="", bd=1, relief=tk.SUNKEN, anchor=tk.W,
-                                     font=("Microsoft YaHei", 9), bg=Theme.STATUS_BAR_BG, fg=Theme.STATUS_BAR_FG, padx=10)
+                                     font=Theme.INPUT_FONT, bg=Theme.STATUS_BAR_BG, fg=Theme.STATUS_BAR_FG, padx=10)
         self.status_label.pack(side=tk.BOTTOM, fill=tk.X)
         
         self.logger = Logger(self.master, self.log_text, self.status_label)
@@ -760,7 +762,7 @@ class App(tk.Frame):
         # 自定义Notebook样式以匹配主题
         style.configure("TNotebook", background=Theme.WINDOW_BG, borderwidth=0)
         style.configure("TNotebook.Tab", 
-                        font=("Microsoft YaHei", 10, "bold"), 
+                        font=Theme.BUTTON_FONT, 
                         padding=[10, 5],
                         background=Theme.MUTED_BG,
                         foreground=Theme.TEXT_NORMAL)
@@ -773,10 +775,10 @@ class App(tk.Frame):
         return notebook
 
     def create_log_area(self, parent):
-        log_frame = tk.LabelFrame(parent, text="Log", font=("Microsoft YaHei", 11, "bold"), fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
-        log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        log_frame = tk.LabelFrame(parent, text="Log", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, pady=10)
+        log_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        log_text = tk.Text(log_frame, wrap=tk.WORD, bg=Theme.LOG_BG, fg=Theme.LOG_FG, font=("SimSun", 10), relief=tk.FLAT, bd=0, padx=10, pady=10, insertbackground=Theme.LOG_FG)
+        log_text = tk.Text(log_frame, wrap=tk.WORD, bg=Theme.LOG_BG, fg=Theme.LOG_FG, font=("SimSun", 10), relief=tk.FLAT, bd=0, padx=5, pady=5, insertbackground=Theme.LOG_FG)
         scrollbar = tk.Scrollbar(log_frame, orient=tk.VERTICAL, command=log_text.yview)
         log_text.configure(yscrollcommand=scrollbar.set)
         
