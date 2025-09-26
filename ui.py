@@ -51,6 +51,7 @@ class Theme:
     FRAME_FONT = ("Microsoft YaHei", 11, "bold")
     INPUT_FONT = ("Microsoft YaHei", 9)
     BUTTON_FONT = ("Microsoft YaHei", 10, "bold")
+    LOG_FONT = ("SimSun", 10)
 
 
 # --- UI 组件工厂 ---
@@ -108,9 +109,9 @@ class UIComponents:
         entry = tk.Entry(frame, textvariable=textvariable, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1)
         entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5), ipady=3)
 
-        select_btn = tk.Button(frame, text="📂", command=select_cmd, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=3)
+        select_btn = tk.Button(frame, text="选", command=select_cmd, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=3)
         select_btn.pack(side=tk.LEFT, padx=(0, 5))
-        open_btn = tk.Button(frame, text="📁", command=open_cmd, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SECONDARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=3)
+        open_btn = tk.Button(frame, text="开", command=open_cmd, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SECONDARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=3)
         open_btn.pack(side=tk.LEFT)
         return frame
     
@@ -187,10 +188,10 @@ class ModUpdateTab(TabFrame):
         action_button_frame.pack(fill=tk.X, pady=10)
         action_button_frame.grid_columnconfigure((0, 1), weight=1)
 
-        run_button = tk.Button(action_button_frame, text="🚀 开始一键更新", command=self.run_update_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_ACCENT_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8)
+        run_button = tk.Button(action_button_frame, text="开始一键更新", command=self.run_update_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_ACCENT_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8)
         run_button.grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=10)
         
-        self.replace_button = tk.Button(action_button_frame, text="🔥 覆盖游戏原文件", command=self.replace_original_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8, state=tk.DISABLED)
+        self.replace_button = tk.Button(action_button_frame, text="覆盖原文件", command=self.replace_original_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8, state=tk.DISABLED)
         self.replace_button.grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=10)
 
     # 旧版 Mod 的处理方法，增加自动查找回调
@@ -271,7 +272,7 @@ class ModUpdateTab(TabFrame):
             return
 
         self.logger.log("\n" + "="*50)
-        self.logger.log("模式：开始一键更新 Mod...")
+        self.logger.log("开始一键更新 Mod...")
         self.logger.status("正在处理中，请稍候...")
         
         # 传递 work_dir (基础输出目录)
@@ -286,36 +287,20 @@ class ModUpdateTab(TabFrame):
         
         if success:
             # 成功后，记录最终文件路径并启用按钮
-            # processing.py 内部会创建带更新信息的子目录，所以我们需要找到它
-            # 查找方式：在 work_dir 中寻找以 "update_" 开头，并且包含新bundle文件名的目录
             generated_bundle_filename = self.new_mod_path.name
-            update_subdir = None
-            for item in work_dir.iterdir():
-                if item.is_dir() and item.name.startswith("update_") and generated_bundle_filename in str(item):
-                    update_subdir = item
-                    break
+            self.final_output_path = work_dir / generated_bundle_filename
             
-            if update_subdir:
-                self.final_output_path = update_subdir / generated_bundle_filename
-            else:
-                # 如果找不到预期的子目录，尝试直接在 work_dir 中查找 (作为后备)
-                potential_path = work_dir / generated_bundle_filename
-                if potential_path.exists():
-                    self.final_output_path = potential_path
-                else:
-                    self.logger.log(f"⚠️ 警告: 无法确定生成的 Mod 文件路径。请手动查找。")
-                    self.final_output_path = None # 确保路径为空
-
-            if self.final_output_path and self.final_output_path.exists():
+            # 检查文件是否存在
+            if self.final_output_path.exists():
                 self.logger.log(f"✅ 更新成功。最终文件路径: {self.final_output_path}")
                 self.logger.log(f"现在可以点击 '覆盖游戏原文件' 按钮来应用 Mod。")
                 self.master.after(0, lambda: self.replace_button.config(state=tk.NORMAL))
                 messagebox.showinfo("成功", message)
             else:
-                # 如果路径查找失败，但process_mod_update返回成功，仍需显示消息
-                self.logger.log(f"⚠️ 警告: 更新成功，但无法自动确定最终文件路径。请在 '{work_dir}' 目录中查找。")
+                # 如果文件不存在，但process_mod_update返回成功，仍需显示消息
+                self.logger.log(f"⚠️ 警告: 更新成功，但无法找到生成的 Mod 文件。请在 '{work_dir}' 目录中查找。")
                 self.master.after(0, lambda: self.replace_button.config(state=tk.DISABLED)) # 禁用替换按钮，因为路径未知
-                messagebox.showinfo("成功 (路径未知)", message + "\n\n⚠️ 警告：无法自动确定最终文件路径，请在输出目录中手动查找。")
+                messagebox.showinfo("成功 (路径未知)", message + "\n\n⚠️ 警告：无法自动找到生成的 Mod 文件，请在输出目录中手动查找。")
         else:
             messagebox.showerror("失败", message)
         
@@ -341,7 +326,7 @@ class ModUpdateTab(TabFrame):
             return
 
         self.logger.log("\n" + "="*50)
-        self.logger.log(f"模式：开始覆盖游戏原文件 '{self.new_mod_path.name}'...")
+        self.logger.log(f"开始覆盖游戏原文件 '{self.new_mod_path.name}'...")
         self.logger.status("正在覆盖文件...")
         try:
             # 目标文件就是新版游戏资源文件
@@ -426,7 +411,7 @@ class PngReplacementTab(TabFrame):
 
     def run_replacement(self):
         self.logger.log("\n" + "="*50)
-        self.logger.log("模式：开始从 PNG 文件夹替换...")
+        self.logger.log("开始从 PNG 文件夹替换...")
         self.logger.status("正在处理中，请稍候...")
         
         success, message = processing.process_bundle_replacement(
@@ -537,7 +522,8 @@ class CrcToolTab(TabFrame):
         if self._validate_paths(): self.run_in_thread(self.replace_original)
 
     def run_correction(self):
-        self.logger.log("\n" + "="*50); self.logger.log("模式：开始CRC修正过程...")
+        self.logger.log("\n" + "="*50)
+        self.logger.log("开始CRC修正过程...")
         self.logger.status("正在进行CRC修正...")
         try:
             backup_message = ""
@@ -567,7 +553,7 @@ class CrcToolTab(TabFrame):
             messagebox.showerror("错误", f"执行过程中发生错误:\n{e}")
 
     def calculate_values(self):
-        self.logger.log("\n" + "="*50); self.logger.log("模式：开始计算CRC值...")
+        self.logger.log("\n" + "="*50); self.logger.log("开始计算CRC值...")
         self.logger.status("正在计算CRC...")
         try:
             with open(self.original_path, "rb") as f: original_data = f.read()
@@ -593,7 +579,7 @@ class CrcToolTab(TabFrame):
         if not messagebox.askyesno("警告", "确定要用修改后的文件替换原始文件吗？\n\n此操作不可逆，建议先备份原始文件！"):
             return
 
-        self.logger.log("\n" + "="*50); self.logger.log("模式：开始替换原始文件...")
+        self.logger.log("\n" + "="*50); self.logger.log("开始替换原始文件...")
         self.logger.status("正在替换文件...")
         try:
             backup_message = ""
@@ -638,10 +624,8 @@ class App(tk.Frame):
             game_dir = Path.home()
         self.game_resource_dir_var = tk.StringVar(value=str(game_dir))
         
-        # 新增共享的输出/工作目录
+        # 共享变量
         self.output_dir_var = tk.StringVar(value=str(Path.cwd() / "output"))
-        
-        # 新增：全局选项变量
         self.enable_padding_var = tk.BooleanVar(value=False)
         self.enable_crc_correction_var = tk.BooleanVar(value=True)
         self.create_backup_var = tk.BooleanVar(value=True)
@@ -656,7 +640,7 @@ class App(tk.Frame):
         left_frame = tk.Frame(main_frame, bg=Theme.WINDOW_BG)
         left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
 
-        # --- 新增：共享设置区域 ---
+        # --- 共享设置区域 ---
         shared_settings_frame = tk.LabelFrame(left_frame, text="全局设置", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
         shared_settings_frame.pack(fill=tk.X, pady=(0, 15))
 
@@ -778,7 +762,7 @@ class App(tk.Frame):
         log_frame = tk.LabelFrame(parent, text="Log", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, pady=10)
         log_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        log_text = tk.Text(log_frame, wrap=tk.WORD, bg=Theme.LOG_BG, fg=Theme.LOG_FG, font=("SimSun", 10), relief=tk.FLAT, bd=0, padx=5, pady=5, insertbackground=Theme.LOG_FG)
+        log_text = tk.Text(log_frame, wrap=tk.WORD, bg=Theme.LOG_BG, fg=Theme.LOG_FG, font=Theme.LOG_FONT, relief=tk.FLAT, bd=0, padx=5, pady=5, insertbackground=Theme.LOG_FG)
         scrollbar = tk.Scrollbar(log_frame, orient=tk.VERTICAL, command=log_text.yview)
         log_text.configure(yscrollcommand=scrollbar.set)
         

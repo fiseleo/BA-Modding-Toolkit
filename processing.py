@@ -13,7 +13,7 @@ from utils import CRCUtils
 def load_bundle(bundle_path: str, log):
     """
     尝试加载一个 Unity bundle 文件。
-    如果直接加载失败，会尝试移除末尾的8个或4个字节（可能是CRC修正数据）后再次加载。
+    如果直接加载失败，会尝试移除末尾的几个字节后再次加载。
     """
     path_obj = Path(bundle_path)
     log(f"正在加载 bundle: {path_obj.name}")
@@ -38,31 +38,22 @@ def load_bundle(bundle_path: str, log):
         log(f"  ❌ 错误: 无法读取文件 '{path_obj.name}': {e}")
         return None
 
-    # 2. 尝试移除末尾8个字节 (padding + crc)
-    if len(data) > 8:
-        try:
-            log("  > 尝试移除末尾8字节后加载...")
-            trimmed_data = data[:-8]
-            env = UnityPy.load(trimmed_data)
-            log("  ✅ 成功加载（移除了8字节）。")
-            return env
-        except Exception as e:
-            log(f"  > 移除8字节后加载失败: {e}")
-    else:
-        log("  > 文件太小，无法移除8字节。")
+    # 定义加载策略：字节移除数量
+    bytes_to_remove = [4, 8, 12]
 
-    # 3. 尝试移除末尾4个字节 (crc only)
-    if len(data) > 4:
-        try:
-            log("  > 尝试移除末尾4字节后加载...")
-            trimmed_data = data[:-4]
-            env = UnityPy.load(trimmed_data)
-            log("  ✅ 成功加载（移除了4字节）。")
-            return env
-        except Exception as e:
-            log(f"  > 移除4字节后加载失败: {e}")
-    else:
-        log("  > 文件太小，无法移除4字节。")
+    # 2. 依次尝试不同的加载策略
+    for bytes_num in bytes_to_remove:
+        if len(data) > bytes_num:
+            try:
+                log(f"  > 尝试移除末尾{bytes_num}字节后加载...")
+                trimmed_data = data[:-bytes_num]
+                env = UnityPy.load(trimmed_data)
+                log(f"  ✅ 成功加载")
+                return env
+            except Exception as e:
+                log(f"  > 移除{bytes_num}字节后加载失败: {e}")
+        else:
+            log(f"  > 文件太小，无法移除{bytes_num}字节。")
 
     log(f"❌ 严重错误: 无法以任何方式加载 '{path_obj.name}'。文件可能已损坏。")
     return None
@@ -90,7 +81,7 @@ def create_backup(original_path: str, log, backup_mode: str = "default") -> bool
 
 def process_bundle_replacement(bundle_path: str, image_folder: str, output_path: str, log, create_backup_file: bool = True):
     """
-    模式1: 从PNG文件夹替换贴图。
+    从PNG文件夹替换贴图
     """
     try:
         if create_backup_file:
@@ -163,68 +154,81 @@ def process_bundle_replacement(bundle_path: str, image_folder: str, output_path:
         log(traceback.format_exc())
         return False, f"处理过程中发生严重错误:\n{e}"
 
+def _b2b_replace(old_bundle_path: str, new_bundle_path: str, log):
+    """
+    执行 Bundle-to-Bundle 的核心替换逻辑。
+    返回一个元组 (modified_env, replacement_count)，如果失败则 modified_env 为 None。
+    """
+    log("正在从旧版 bundle 中提取 Texture2D 资源...")
+    old_env = load_bundle(old_bundle_path, log)
+    if not old_env:
+        return None, 0
+    
+    old_textures_map = {}
+    for obj in old_env.objects:
+        if obj.type.name == "Texture2D":
+            data = obj.read()
+            old_textures_map[data.m_Name] = data.image
+    
+    if not old_textures_map:
+        log("⚠️ 警告: 在旧版 bundle 中没有找到任何 Texture2D 资源。")
+        return None, 0
+
+    log(f"提取完成，共找到 {len(old_textures_map)} 个 Texture2D 资源。")
+
+    log("\n正在扫描新版 bundle 并进行替换...")
+    new_env = load_bundle(new_bundle_path, log)
+    if not new_env:
+        return None, 0
+
+    replacement_count = 0
+    replaced_assets = []
+    for obj in new_env.objects:
+        if obj.type.name == "Texture2D":
+            new_data = obj.read()
+            if new_data.m_Name in old_textures_map:
+                log(f"  > 找到匹配资源 '{new_data.m_Name}'，准备从旧版恢复...")
+                try:
+                    new_data.image = old_textures_map[new_data.m_Name]
+                    new_data.save()
+                    log(f"    ✅ 成功: 资源 '{new_data.m_Name}' 已被恢复。")
+                    replacement_count += 1
+                    replaced_assets.append(new_data.m_Name)
+                except Exception as e:
+                    log(f"    ❌ 错误: 恢复资源 '{new_data.m_Name}' 时发生错误: {e}")
+
+    if replacement_count > 0:
+        log(f"\n成功恢复/替换了 {replacement_count} 个资源:")
+        for name in replaced_assets:
+            log(f"  - {name}")
+    
+    return new_env, replacement_count
+
 def process_bundle_to_bundle_replacement(new_bundle_path: str, old_bundle_path: str, output_path: str, log, create_backup_file: bool = True):
     """
-    模式2: 从旧版Bundle包恢复/替换贴图到新版Bundle包。
+    从旧版Bundle包替换贴图到新版Bundle包。
     """
     try:
         if create_backup_file:
             if not create_backup(new_bundle_path, log, "b2b"):
                 return False, "创建备份失败，操作已终止。"
 
-        new_env = load_bundle(new_bundle_path, log)
-        if not new_env:
-            return False, "无法加载新版 Bundle 文件，即使在尝试移除潜在的 CRC 补丁后也是如此。请检查文件是否损坏。"
+        # 调用核心替换函数
+        modified_env, replacement_count = _b2b_replace(old_bundle_path, new_bundle_path, log)
+
+        if not modified_env:
+            return False, "Bundle-to-Bundle 替换过程失败，请检查日志获取详细信息。"
         
-        old_env = load_bundle(old_bundle_path, log)
-        if not old_env:
-            return False, "无法加载旧版 Bundle 文件，即使在尝试移除潜在的 CRC 补丁后也是如此。请检查文件是否损坏。"
-
-        log("\n正在从旧版 bundle 中提取 Texture2D 资源...")
-        old_textures_map = {}
-        for obj in old_env.objects:
-            if obj.type.name == "Texture2D":
-                data = obj.read()
-                old_textures_map[data.m_Name] = data.image
-        
-        if not old_textures_map:
-            log("⚠️ 警告: 在旧版 bundle 中没有找到任何 Texture2D 资源。")
-            return False, "在旧版 bundle 中没有找到任何 Texture2D 资源，无法进行替换。"
-
-        log(f"提取完成，共找到 {len(old_textures_map)} 个 Texture2D 资源。")
-
-        log("\n正在扫描新版 bundle 并进行替换...")
-        replacement_count = 0
-        replaced_assets = []
-
-        for obj in new_env.objects:
-            if obj.type.name == "Texture2D":
-                new_data = obj.read()
-                if new_data.m_Name in old_textures_map:
-                    log(f"  > 找到匹配资源 '{new_data.m_Name}'，准备从旧版恢复...")
-                    try:
-                        new_data.image = old_textures_map[new_data.m_Name]
-                        new_data.save()
-                        log(f"    ✅ 成功: 资源 '{new_data.m_Name}' 已被恢复。")
-                        replacement_count += 1
-                        replaced_assets.append(new_data.m_Name)
-                    except Exception as e:
-                        log(f"    ❌ 错误: 恢复资源 '{new_data.m_Name}' 时发生错误: {e}")
-
         if replacement_count == 0:
             log("\n⚠️ 警告: 没有找到任何名称匹配的 Texture2D 资源进行替换。")
             log("请确认新旧两个bundle包中确实存在同名的贴图资源。")
             return False, "没有找到任何名称匹配的 Texture2D 资源进行替换。"
-        
-        log(f"\n成功恢复/替换了 {replacement_count} 个资源:")
-        for name in replaced_assets:
-            log(f"  - {name}")
 
         log(f"\n正在将修改后的 bundle 保存到: {Path(output_path).name}")
         log("压缩方式: LZMA (这可能需要一些时间...)")
         
         with open(output_path, "wb") as f:
-            f.write(new_env.file.save(packer="lzma"))
+            f.write(modified_env.file.save(packer="lzma"))
 
         log("\n🎉 处理完成！新的 bundle 文件已成功保存。")
         return True, f"处理完成！\n成功恢复/替换了 {replacement_count} 个资源。\n\n文件已保存至:\n{output_path}"
@@ -313,64 +317,42 @@ def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_
 
         log(f"  > 使用旧版 Mod: {old_mod_path.name}")
         log(f"  > 使用新版资源: {new_bundle_path.name}")
-
-        # --- 1. 创建工作目录 ---
-        # processing.py 不再创建子目录，直接使用 ui.py 提供的目录
         log(f"  > 使用工作目录: {base_working_dir}")
 
-        # --- 2. 执行 B2B 替换 ---
+        # --- 1. 执行 B2B 替换 ---
         log("\n--- 阶段 1: Bundle-to-Bundle 替换 ---")
         
-        # 加载旧版 Mod 的贴图数据
-        old_env = load_bundle(old_mod_path_str, log)
-        if not old_env:
-            return False, "加载旧版 Mod 文件失败。"
-        old_textures_map = {}
-        for obj in old_env.objects:
-            if obj.type.name == "Texture2D":
-                data = obj.read()
-                old_textures_map[data.m_Name] = data.image
+        modified_env, replacement_count = _b2b_replace(old_mod_path_str, new_bundle_path_str, log)
 
-        # 加载新版文件并替换
-        new_env = load_bundle(str(new_bundle_path), log)
-        if not new_env:
-            return False, "加载新版文件失败。"
-
-        replacement_count = 0
-        for obj in new_env.objects:
-            if obj.type.name == "Texture2D":
-                new_data = obj.read()
-                if new_data.m_Name in old_textures_map:
-                    new_data.image = old_textures_map[new_data.m_Name]
-                    new_data.save()
-                    replacement_count += 1
+        if not modified_env:
+            return False, "Bundle-to-Bundle 替换过程失败，请检查日志获取详细信息。"
+        if replacement_count == 0:
+            return False, "没有找到任何名称匹配的资源进行替换，无法继续更新。"
         
         log(f"  > B2B 替换完成，共处理 {replacement_count} 个贴图。")
 
-        # --- 3. 根据选项决定是否执行CRC修正 ---
-        intermediate_path = None # 用于存储未修正CRC的文件路径
-        final_path = base_working_dir / new_bundle_path.name # 最终文件直接保存在base_working_dir下
+        # --- 2. 根据选项决定是否执行CRC修正 ---
+        # 在工作目录下生成文件
+        final_path = base_working_dir / new_bundle_path.name
 
         if perform_crc:
-            intermediate_path = base_working_dir / f"uncrc_{new_bundle_path.name}"
-            log(f"  > 正在保存未修正CRC的中间文件到: {intermediate_path.name}")
-            with open(intermediate_path, "wb") as f:
-                f.write(new_env.file.save(packer="lzma"))
+            uncrc_path = base_working_dir / f"uncrc_{new_bundle_path.name}"
+            log(f"\n--- 阶段 2: 保存与CRC修正 ---")
+            log(f"  > 正在保存未修正CRC的中间文件到: {uncrc_path.name}")
+            with open(uncrc_path, "wb") as f:
+                f.write(modified_env.file.save(packer="lzma"))
             log("  > 中间文件保存成功。")
-
-            log("\n--- 阶段 2: CRC 修正 ---")
             
-            log(f"  > 正在复制 '{intermediate_path.name}' 到 '{final_path.name}' 以进行CRC修正。")
-            shutil.copy2(intermediate_path, final_path)
+            log(f"  > 正在复制 '{uncrc_path.name}' 到 '{final_path.name}' 以进行CRC修正。")
+            shutil.copy2(uncrc_path, final_path)
             
             log(f"  > 原始文件 (用于CRC校验): {new_bundle_path.name}")
             log(f"  > 待修正文件: {final_path.name}")
             
-            # 注意：这里的原始文件应该是新版游戏资源文件 (new_bundle_path)
+            # 执行CRC修正
             is_crc_success = CRCUtils.manipulate_crc(str(new_bundle_path), str(final_path), enable_padding)
 
             if not is_crc_success:
-                # 如果CRC修正失败，尝试删除最终文件（如果存在）
                 if final_path.exists():
                     try:
                         final_path.unlink()
@@ -380,21 +362,19 @@ def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_
                 return False, f"CRC 修正失败。最终文件 '{final_path.name}' 未能生成。"
             
             log("✅ CRC 修正成功！")
-            log(f"\n🎉 全部流程处理完成！")
-            log(f"未修正CRC的文件已保存: {intermediate_path}")
-            log(f"最终文件已保存至: {final_path}")
+            
+            log(f"未修正CRC的文件已保存: {uncrc_path}")
 
-            return True, f"一键更新成功！\n\n最终文件保存在:\n{final_path}\n\n(同时保留了未修正CRC的版本 '{intermediate_path.name}')"
         else:
-            log(f"  > CRC修正已跳过。正在直接保存最终文件到: {final_path.name}")
+            log(f"\n--- 阶段 2: 保存最终文件 ---")
+            log(f"  > 正在直接保存最终文件到: {final_path.name}")
             with open(final_path, "wb") as f:
-                f.write(new_env.file.save(packer="lzma"))
+                f.write(modified_env.file.save(packer="lzma"))
             log("  > 最终文件保存成功。")
 
-            log(f"\n🎉 全部流程处理完成！")
-            log(f"最终文件已保存至: {final_path}")
-            
-            return True, f"一键更新成功！ (已跳过CRC修正)\n\n最终文件保存在:\n{final_path}"
+        log(f"最终文件已保存至: {final_path}")
+        log(f"\n🎉 全部流程处理完成！")
+        return True, "一键更新成功！"
 
     except Exception as e:
         log(f"\n❌ 严重错误: 在一键更新流程中发生错误: {e}")
