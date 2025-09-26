@@ -154,27 +154,29 @@ def process_bundle_replacement(bundle_path: str, image_folder: str, output_path:
         log(traceback.format_exc())
         return False, f"处理过程中发生严重错误:\n{e}"
 
-def _b2b_replace(old_bundle_path: str, new_bundle_path: str, log):
+def _b2b_replace(old_bundle_path: str, new_bundle_path: str, log, asset_types_to_replace: set):
     """
     执行 Bundle-to-Bundle 的核心替换逻辑。
     返回一个元组 (modified_env, replacement_count)，如果失败则 modified_env 为 None。
     """
-    log("正在从旧版 bundle 中提取 Texture2D 资源...")
+    log(f"正在从旧版 bundle 中提取指定类型的资源: {', '.join(asset_types_to_replace)}")
     old_env = load_bundle(old_bundle_path, log)
     if not old_env:
         return None, 0
     
-    old_textures_map = {}
+    old_assets_map = {}
     for obj in old_env.objects:
-        if obj.type.name == "Texture2D":
+        # 根据传入的类型集合进行筛选
+        if obj.type.name in asset_types_to_replace:
             data = obj.read()
-            old_textures_map[data.m_Name] = data.image
+            # 使用一种通用的方法存储资源数据，以便恢复
+            old_assets_map[data.m_Name] = (obj.type.name, obj.get_raw_data())
     
-    if not old_textures_map:
-        log("⚠️ 警告: 在旧版 bundle 中没有找到任何 Texture2D 资源。")
+    if not old_assets_map:
+        log(f"⚠️ 警告: 在旧版 bundle 中没有找到任何指定类型的资源 ({', '.join(asset_types_to_replace)})。")
         return None, 0
 
-    log(f"提取完成，共找到 {len(old_textures_map)} 个 Texture2D 资源。")
+    log(f"提取完成，共找到 {len(old_assets_map)} 个可替换资源。")
 
     log("\n正在扫描新版 bundle 并进行替换...")
     new_env = load_bundle(new_bundle_path, log)
@@ -184,16 +186,24 @@ def _b2b_replace(old_bundle_path: str, new_bundle_path: str, log):
     replacement_count = 0
     replaced_assets = []
     for obj in new_env.objects:
-        if obj.type.name == "Texture2D":
+        # 同样，只关心指定类型的资源
+        if obj.type.name in asset_types_to_replace:
             new_data = obj.read()
-            if new_data.m_Name in old_textures_map:
-                log(f"  > 找到匹配资源 '{new_data.m_Name}'，准备从旧版恢复...")
+            if new_data.m_Name in old_assets_map:
+                old_type_name, old_raw_data = old_assets_map[new_data.m_Name]
+                
+                # 安全检查：确保资源类型匹配
+                if obj.type.name != old_type_name:
+                    log(f"    ⚠️ 警告: 资源 '{new_data.m_Name}' 类型不匹配 (新: {obj.type.name}, 旧: {old_type_name})。已跳过。")
+                    continue
+
+                log(f"  > 找到匹配资源 '{new_data.m_Name}' (类型: {obj.type.name})，准备从旧版恢复...")
                 try:
-                    new_data.image = old_textures_map[new_data.m_Name]
-                    new_data.save()
+                    # 使用 set_raw_data 进行通用替换，无需关心具体类型
+                    obj.set_raw_data(old_raw_data)
                     log(f"    ✅ 成功: 资源 '{new_data.m_Name}' 已被恢复。")
                     replacement_count += 1
-                    replaced_assets.append(new_data.m_Name)
+                    replaced_assets.append(f"{new_data.m_Name} ({obj.type.name})")
                 except Exception as e:
                     log(f"    ❌ 错误: 恢复资源 '{new_data.m_Name}' 时发生错误: {e}")
 
@@ -213,8 +223,9 @@ def process_bundle_to_bundle_replacement(new_bundle_path: str, old_bundle_path: 
             if not create_backup(new_bundle_path, log, "b2b"):
                 return False, "创建备份失败，操作已终止。"
 
-        # 调用核心替换函数
-        modified_env, replacement_count = _b2b_replace(old_bundle_path, new_bundle_path, log)
+        # 注意：此函数现在没有直接使用的地方，但为了保持API完整性，我们假设它默认只替换Texture2D
+        asset_types = {"Texture2D"}
+        modified_env, replacement_count = _b2b_replace(old_bundle_path, new_bundle_path, log, asset_types)
 
         if not modified_env:
             return False, "Bundle-to-Bundle 替换过程失败，请检查日志获取详细信息。"
@@ -304,7 +315,7 @@ def find_new_bundle_path(old_mod_path_str: str, game_resource_dir_str: str, log)
     return None, msg
 
 
-def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_dir_str: str, enable_padding: bool, log, perform_crc: bool):
+def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_dir_str: str, enable_padding: bool, log, perform_crc: bool, asset_types_to_replace: set):
     """
     自动化Mod更新流程。
     此版本直接接收旧版Mod路径和新版资源路径，并且将文件保存在指定的working_dir_str下。
@@ -322,14 +333,15 @@ def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_
         # --- 1. 执行 B2B 替换 ---
         log("\n--- 阶段 1: Bundle-to-Bundle 替换 ---")
         
-        modified_env, replacement_count = _b2b_replace(old_mod_path_str, new_bundle_path_str, log)
+        # 将资源类型集合传递给核心函数
+        modified_env, replacement_count = _b2b_replace(old_mod_path_str, new_bundle_path_str, log, asset_types_to_replace)
 
         if not modified_env:
             return False, "Bundle-to-Bundle 替换过程失败，请检查日志获取详细信息。"
         if replacement_count == 0:
             return False, "没有找到任何名称匹配的资源进行替换，无法继续更新。"
         
-        log(f"  > B2B 替换完成，共处理 {replacement_count} 个贴图。")
+        log(f"  > B2B 替换完成，共处理 {replacement_count} 个资源。")
 
         # --- 2. 根据选项决定是否执行CRC修正 ---
         # 在工作目录下生成文件

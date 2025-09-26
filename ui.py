@@ -150,13 +150,18 @@ class TabFrame(ttk.Frame):
 # --- 具体 Tab 实现 ---
 
 class ModUpdateTab(TabFrame):
-    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var):
+    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var):
         self.old_mod_path = None
         self.new_mod_path = None 
         self.final_output_path = None # 新增：用于存储成功生成的文件路径
         self.enable_padding = enable_padding_var
         self.enable_crc_correction = enable_crc_correction_var
         self.create_backup = create_backup_var
+        
+        # 接收新的资源类型变量
+        self.replace_texture2d = replace_texture2d_var
+        self.replace_textasset = replace_textasset_var
+        self.replace_mesh = replace_mesh_var
 
         # 接收共享的变量
         self.game_resource_dir_var = game_resource_dir_var
@@ -182,6 +187,18 @@ class ModUpdateTab(TabFrame):
         tk.Entry(auto_find_frame, textvariable=self.game_resource_dir_var, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1, state='readonly').pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # 3. 选项和操作
+        
+        # --- 资源替换类型选项 ---
+        replace_options_frame = tk.LabelFrame(self, text="替换资源类型", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
+        replace_options_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        checkbox_container = tk.Frame(replace_options_frame, bg=Theme.FRAME_BG)
+        checkbox_container.pack(fill=tk.X)
+        
+        tk.Checkbutton(checkbox_container, text="Texture2D", variable=self.replace_texture2d, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
+        tk.Checkbutton(checkbox_container, text="TextAsset", variable=self.replace_textasset, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
+        tk.Checkbutton(checkbox_container, text="Mesh", variable=self.replace_mesh, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT)
+        # --- 选项结束 ---
 
         # 操作按钮区域
         action_button_frame = tk.Frame(self) # 使用与父框架相同的背景色
@@ -252,6 +269,12 @@ class ModUpdateTab(TabFrame):
         if not all([self.old_mod_path, self.new_mod_path, self.game_resource_dir_var.get(), self.work_dir_var.get()]):
             messagebox.showerror("错误", "请确保已分别指定旧版Mod、新版游戏资源，并设置了游戏资源目录和工作目录。")
             return
+        
+        # 检查是否至少选择了一种资源类型
+        if not any([self.replace_texture2d.get(), self.replace_textasset.get(), self.replace_mesh.get()]):
+            messagebox.showerror("错误", "请至少选择一种要替换的资源类型（如 Texture2D）。")
+            return
+
         self.run_in_thread(self.run_update)
 
     def run_update(self):
@@ -275,14 +298,24 @@ class ModUpdateTab(TabFrame):
         self.logger.log("开始一键更新 Mod...")
         self.logger.status("正在处理中，请稍候...")
         
-        # 传递 work_dir (基础输出目录)
+        # 构建要替换的资源类型集合
+        asset_types_to_replace = set()
+        if self.replace_texture2d.get():
+            asset_types_to_replace.add("Texture2D")
+        if self.replace_textasset.get():
+            asset_types_to_replace.add("TextAsset")
+        if self.replace_mesh.get():
+            asset_types_to_replace.add("Mesh")
+        
+        # 传递 work_dir (基础输出目录) 和资源类型集合
         success, message = processing.process_mod_update(
             str(self.old_mod_path), 
             str(self.new_mod_path),
-            str(work_dir), # <-- 传递的是基础输出目录
+            str(work_dir),
             self.enable_padding.get(), 
             self.logger.log,
-            self.enable_crc_correction.get()
+            self.enable_crc_correction.get(),
+            asset_types_to_replace
         )
         
         if success:
@@ -629,6 +662,11 @@ class App(tk.Frame):
         self.enable_padding_var = tk.BooleanVar(value=False)
         self.enable_crc_correction_var = tk.BooleanVar(value=True)
         self.create_backup_var = tk.BooleanVar(value=True)
+        
+        # 一键更新的资源类型选项
+        self.replace_texture2d_var = tk.BooleanVar(value=True) # 默认选中
+        self.replace_textasset_var = tk.BooleanVar(value=False)
+        self.replace_mesh_var = tk.BooleanVar(value=False)
 
     def create_widgets(self):
         main_frame = tk.Frame(self.master, bg=Theme.WINDOW_BG, padx=10, pady=10)
@@ -779,7 +817,10 @@ class App(tk.Frame):
                                   output_dir_var=self.output_dir_var,
                                   enable_padding_var=self.enable_padding_var,
                                   enable_crc_correction_var=self.enable_crc_correction_var,
-                                  create_backup_var=self.create_backup_var)
+                                  create_backup_var=self.create_backup_var,
+                                  replace_texture2d_var=self.replace_texture2d_var,
+                                  replace_textasset_var=self.replace_textasset_var,
+                                  replace_mesh_var=self.replace_mesh_var)
         self.notebook.add(update_tab, text="一键更新 Mod")
 
         # Tab: CRC 工具
