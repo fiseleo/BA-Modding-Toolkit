@@ -155,21 +155,21 @@ class TabFrame(ttk.Frame):
 
 class ModUpdateTab(TabFrame):
     def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var):
-        self.old_mod_path = None
-        self.new_mod_path = None 
-        self.final_output_path = None # 新增：用于存储成功生成的文件路径
-        self.enable_padding = enable_padding_var
-        self.enable_crc_correction = enable_crc_correction_var
-        self.create_backup = create_backup_var
+        self.old_mod_path: Path = None
+        self.new_mod_path: Path = None 
+        self.final_output_path: Path = None # 新增：用于存储成功生成的文件路径
+        self.enable_padding: bool = enable_padding_var
+        self.enable_crc_correction: bool = enable_crc_correction_var
+        self.create_backup: bool = create_backup_var
         
         # 接收新的资源类型变量
-        self.replace_texture2d = replace_texture2d_var
-        self.replace_textasset = replace_textasset_var
-        self.replace_mesh = replace_mesh_var
+        self.replace_texture2d: bool = replace_texture2d_var
+        self.replace_textasset: bool = replace_textasset_var
+        self.replace_mesh: bool = replace_mesh_var
 
         # 接收共享的变量
-        self.game_resource_dir_var = game_resource_dir_var
-        self.work_dir_var = output_dir_var
+        self.game_resource_dir_var: Path = game_resource_dir_var
+        self.work_dir_var: Path = output_dir_var
 
         # 1. 旧版 Mod 文件
         _, self.old_mod_label = UIComponents.create_file_drop_zone(
@@ -256,8 +256,8 @@ class ModUpdateTab(TabFrame):
         self.logger.status("正在搜索新版资源...")
         
         found_path, message = processing.find_new_bundle_path(
-            str(self.old_mod_path),
-            self.game_resource_dir_var.get(),
+            self.old_mod_path,
+            Path(self.game_resource_dir_var.get()),
             self.logger.log
         )
         
@@ -313,9 +313,9 @@ class ModUpdateTab(TabFrame):
         
         # 传递 work_dir (基础输出目录) 和资源类型集合
         success, message = processing.process_mod_update(
-            str(self.old_mod_path), 
-            str(self.new_mod_path),
-            str(work_dir),
+            self.old_mod_path,
+            self.new_mod_path,
+            work_dir,
             self.enable_padding.get(), 
             self.logger.log,
             self.enable_crc_correction.get(),
@@ -429,7 +429,7 @@ class PngReplacementTab(TabFrame):
             p = self.bundle_path
             output_dir = Path(self.output_dir_var.get())
             new_name = f"{p.stem}_modified{p.suffix}"
-            self.output_path.set(str(output_dir / new_name))
+            self.output_path.set(output_dir / new_name)
             self.logger.log(f"输出路径已自动设置为: {self.output_path.get()}")
 
     def run_replacement_thread(self):
@@ -452,9 +452,9 @@ class PngReplacementTab(TabFrame):
         self.logger.status("正在处理中，请稍候...")
         
         success, message = processing.process_png_replacement(
-            str(self.bundle_path), 
-            str(self.folder_path), 
-            self.output_path.get(), 
+            self.bundle_path,
+            self.folder_path,
+            Path(self.output_path.get()),
             self.logger.log,
             create_backup_file=self.create_backup.get()
         )
@@ -566,7 +566,7 @@ class CrcToolTab(TabFrame):
             # 先检测CRC是否一致
             self.logger.log("正在检测CRC值是否匹配...")
             try:
-                is_crc_match = CRCUtils.check_crc_match(str(self.original_path), str(self.modified_path))
+                is_crc_match = CRCUtils.check_crc_match(self.original_path, self.modified_path)
             except Exception as e:
                 self.logger.log(f"⚠️ 警告: 检测CRC值时发生错误: {e}")
                 messagebox.showerror("错误", "检测CRC值时发生错误。请检查原始文件和修改后文件是否正确。")
@@ -594,7 +594,7 @@ class CrcToolTab(TabFrame):
                 backup_message = "\n\n(已跳过创建备份)"
             
             # 修正文件CRC
-            success = CRCUtils.manipulate_crc(str(self.original_path), str(self.modified_path), self.enable_padding.get())
+            success = CRCUtils.manipulate_crc(self.original_path, self.modified_path, self.enable_padding.get())
             
             if success:
                 self.logger.log("✅ CRC修正成功！")

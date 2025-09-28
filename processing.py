@@ -10,18 +10,17 @@ import re
 
 from utils import CRCUtils
 
-def load_bundle(bundle_path: str, log):
+def load_bundle(bundle_path: Path, log):
     """
     尝试加载一个 Unity bundle 文件。
     如果直接加载失败，会尝试移除末尾的几个字节后再次加载。
     """
-    path_obj = Path(bundle_path)
-    log(f"正在加载 bundle: {path_obj.name}")
+    log(f"正在加载 bundle: {bundle_path.name}")
 
     # 1. 尝试直接加载
     try:
         log("  > 尝试直接加载...")
-        env = UnityPy.load(bundle_path)
+        env = UnityPy.load(str(bundle_path))
         log("  ✅ 直接加载成功。")
         return env
     except Exception as e:
@@ -35,7 +34,7 @@ def load_bundle(bundle_path: str, log):
         with open(bundle_path, "rb") as f:
             data = f.read()
     except Exception as e:
-        log(f"  ❌ 错误: 无法读取文件 '{path_obj.name}': {e}")
+        log(f"  ❌ 错误: 无法读取文件 '{bundle_path.name}': {e}")
         return None
 
     # 定义加载策略：字节移除数量
@@ -55,21 +54,20 @@ def load_bundle(bundle_path: str, log):
         else:
             log(f"  > 文件太小，无法移除{bytes_num}字节。")
 
-    log(f"❌ 严重错误: 无法以任何方式加载 '{path_obj.name}'。文件可能已损坏。")
+    log(f"❌ 严重错误: 无法以任何方式加载 '{bundle_path.name}'。文件可能已损坏。")
     return None
 
-def create_backup(original_path: str, log, backup_mode: str = "default") -> bool:
+def create_backup(original_path: Path, log, backup_mode: str = "default") -> bool:
     """
     创建原始文件的备份
     backup_mode: "default" - 在原文件后缀后添加.bak
                  "b2b" - 重命名为orig_(原名)
     """
     try:
-        path_obj = Path(original_path)
         if backup_mode == "b2b":
-            backup_path = path_obj.with_name(f"orig_{path_obj.name}")
+            backup_path = original_path.with_name(f"orig_{original_path.name}")
         else:
-            backup_path = path_obj.with_suffix(path_obj.suffix + '.bak')
+            backup_path = original_path.with_suffix(original_path.suffix + '.bak')
         
         log(f"正在备份原始文件到: {backup_path.name}")
         shutil.copy2(original_path, backup_path)
@@ -79,26 +77,25 @@ def create_backup(original_path: str, log, backup_mode: str = "default") -> bool
         log(f"❌ 严重错误: 创建备份文件失败: {e}")
         return False
 
-def save_bundle(env: UnityPy.Environment, output_path: str, log) -> bool:
+def save_bundle(env: UnityPy.Environment, output_path: Path, log) -> bool:
     """
     将修改后的 Unity bundle 保存到指定路径。
     """
     try:
-        path_obj = Path(output_path)
-        log(f"\n正在将修改后的 bundle 保存到: {path_obj.name}")
+        log(f"\n正在将修改后的 bundle 保存到: {output_path.name}")
         log("压缩方式: LZMA (这可能需要一些时间...)")
         
         with open(output_path, "wb") as f:
             f.write(env.file.save(packer="lzma"))
         
-        log(f"✅ Bundle 文件已成功保存到: {path_obj}")
+        log(f"✅ Bundle 文件已成功保存到: {output_path}")
         return True
     except Exception as e:
         log(f"❌ 保存 bundle 文件到 '{output_path}' 时失败: {e}")
         log(traceback.format_exc())
         return False
 
-def process_png_replacement(bundle_path: str, image_folder: str, output_path: str, log, create_backup_file: bool = True):
+def process_png_replacement(bundle_path: Path, image_folder: Path, output_path: Path, log, create_backup_file: bool = True):
     """
     从PNG文件夹替换贴图
     """
@@ -170,7 +167,7 @@ def process_png_replacement(bundle_path: str, image_folder: str, output_path: st
         log(traceback.format_exc())
         return False, f"处理过程中发生严重错误:\n{e}"
 
-def _b2b_replace(old_bundle_path: str, new_bundle_path: str, log, asset_types_to_replace: set):
+def _b2b_replace(old_bundle_path: Path, new_bundle_path: Path, log, asset_types_to_replace: set):
     """
     执行 Bundle-to-Bundle 的核心替换逻辑。
     返回一个元组 (modified_env, replacement_count)，如果失败则 modified_env 为 None。
@@ -230,7 +227,7 @@ def _b2b_replace(old_bundle_path: str, new_bundle_path: str, log, asset_types_to
     
     return new_env, replacement_count
 
-def process_bundle_to_bundle_replacement(new_bundle_path: str, old_bundle_path: str, output_path: str, log, create_backup_file: bool = True):
+def process_bundle_to_bundle_replacement(new_bundle_path: Path, old_bundle_path: Path, output_path: Path, log, create_backup_file: bool = True):
     """
     从旧版Bundle包替换指定资源类型到新版Bundle包。
     """
@@ -262,14 +259,12 @@ def process_bundle_to_bundle_replacement(new_bundle_path: str, old_bundle_path: 
         return False, f"处理过程中发生严重错误:\n{e}"
 
 
-def find_new_bundle_path(old_mod_path_str: str, game_resource_dir_str: str, log):
+def find_new_bundle_path(old_mod_path: Path, game_resource_dir: Path, log):
     """
     根据旧版Mod文件，在游戏资源目录中智能查找对应的新版文件。
     返回 (找到的路径对象, 状态消息) 的元组。
     """
-    old_mod_path = Path(old_mod_path_str)
-    game_resource_dir = Path(game_resource_dir_str)
-    
+
     log(f"正在为 '{old_mod_path.name}' 搜索新版文件...")
 
     # 1. 通过日期模式确定文件名前缀
@@ -292,7 +287,7 @@ def find_new_bundle_path(old_mod_path_str: str, game_resource_dir_str: str, log)
     log(f"  > 找到 {len(candidates)} 个候选文件，正在验证内容...")
 
     # 3. 加载旧Mod获取贴图列表
-    old_env = load_bundle(str(old_mod_path), log)
+    old_env = load_bundle(old_mod_path, log)
     if not old_env:
         msg = "加载旧版Mod文件失败。"
         log(f"  > 失败: {msg}")
@@ -327,26 +322,21 @@ def find_new_bundle_path(old_mod_path_str: str, game_resource_dir_str: str, log)
     return None, msg
 
 
-def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_dir_str: str, enable_padding: bool, log, perform_crc: bool, asset_types_to_replace: set):
+def process_mod_update(old_mod_path: Path, new_bundle_path: Path, working_dir: Path, enable_padding: bool, log, perform_crc: bool, asset_types_to_replace: set):
     """
     自动化Mod更新流程。
-    此版本直接接收旧版Mod路径和新版资源路径，并且将文件保存在指定的working_dir_str下。
+    此版本直接接收旧版Mod路径和新版资源路径，并且将文件保存在指定的working_dir下。
     """
     try:
-        log("🚀 开始一键更新流程...")
-        old_mod_path = Path(old_mod_path_str)
-        new_bundle_path = Path(new_bundle_path_str) 
-        base_working_dir = Path(working_dir_str)
-
         log(f"  > 使用旧版 Mod: {old_mod_path.name}")
         log(f"  > 使用新版资源: {new_bundle_path.name}")
-        log(f"  > 使用工作目录: {base_working_dir}")
+        log(f"  > 使用工作目录: {working_dir}")
 
         # --- 1. 执行 B2B 替换 ---
         log("\n--- 阶段 1: Bundle-to-Bundle 替换 ---")
         
         # 将资源类型集合传递给核心函数
-        modified_env, replacement_count = _b2b_replace(old_mod_path_str, new_bundle_path_str, log, asset_types_to_replace)
+        modified_env, replacement_count = _b2b_replace(old_mod_path, new_bundle_path, log, asset_types_to_replace)
 
         if not modified_env:
             return False, "Bundle-to-Bundle 替换过程失败，请检查日志获取详细信息。"
@@ -357,14 +347,14 @@ def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_
 
         # --- 2. 根据选项决定是否执行CRC修正 ---
         # 在工作目录下生成文件
-        final_path = base_working_dir / new_bundle_path.name
+        final_path = working_dir / new_bundle_path.name
 
         if perform_crc:
-            uncrc_path = base_working_dir / f"uncrc_{new_bundle_path.name}"
+            uncrc_path = working_dir / f"uncrc_{new_bundle_path.name}"
             log(f"\n--- 阶段 2: 保存与CRC修正 ---")
             log(f"  > 准备保存未修正CRC的中间文件...")
             
-            if not save_bundle(modified_env, str(uncrc_path), log):
+            if not save_bundle(modified_env, uncrc_path, log):
                 return False, "保存中间文件失败，操作已终止。"
 
             log(f"  > 正在复制 '{uncrc_path.name}' 到 '{final_path.name}' 以进行CRC修正。")
@@ -374,7 +364,7 @@ def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_
             log(f"  > 待修正文件: {final_path.name}")
             
             # 执行CRC修正
-            is_crc_success = CRCUtils.manipulate_crc(str(new_bundle_path), str(final_path), enable_padding)
+            is_crc_success = CRCUtils.manipulate_crc(new_bundle_path, final_path, enable_padding)
 
             if not is_crc_success:
                 if final_path.exists():
@@ -392,7 +382,7 @@ def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_
         else:
             log(f"\n--- 阶段 2: 保存最终文件 ---")
             log(f"  > 准备直接保存最终文件...")
-            if not save_bundle(modified_env, str(final_path), log):
+            if not save_bundle(modified_env, final_path, log):
                 return False, "保存最终文件失败，操作已终止。"
 
         log(f"最终文件已保存至: {final_path}")
