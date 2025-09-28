@@ -19,6 +19,21 @@ class CRCUtils:
         return binascii.crc32(data) & 0xFFFFFFFF
 
     @staticmethod
+    def check_crc_match(original_path: str, modified_path: str) -> bool:
+        """
+        检测两个文件的CRC值是否匹配。
+        返回True表示CRC值一致，False表示不一致。
+        """
+        with open(original_path, "rb") as f:
+            original_data = f.read()
+        with open(modified_path, "rb") as f:
+            modified_data = f.read()
+
+        original_crc = CRCUtils.compute_crc32(original_data)
+        modified_crc = CRCUtils.compute_crc32(modified_data)
+        
+        return original_crc == modified_crc
+    @staticmethod
     def manipulate_crc(original_path: str, modified_path: str, enable_padding: bool = False) -> bool:
         """
         修正修改后文件的CRC，使其与原始文件匹配。

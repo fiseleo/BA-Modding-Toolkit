@@ -79,7 +79,26 @@ def create_backup(original_path: str, log, backup_mode: str = "default") -> bool
         log(f"❌ 严重错误: 创建备份文件失败: {e}")
         return False
 
-def process_bundle_replacement(bundle_path: str, image_folder: str, output_path: str, log, create_backup_file: bool = True):
+def save_bundle(env: UnityPy.Environment, output_path: str, log) -> bool:
+    """
+    将修改后的 Unity bundle 保存到指定路径。
+    """
+    try:
+        path_obj = Path(output_path)
+        log(f"\n正在将修改后的 bundle 保存到: {path_obj.name}")
+        log("压缩方式: LZMA (这可能需要一些时间...)")
+        
+        with open(output_path, "wb") as f:
+            f.write(env.file.save(packer="lzma"))
+        
+        log(f"✅ Bundle 文件已成功保存到: {path_obj}")
+        return True
+    except Exception as e:
+        log(f"❌ 保存 bundle 文件到 '{output_path}' 时失败: {e}")
+        log(traceback.format_exc())
+        return False
+
+def process_png_replacement(bundle_path: str, image_folder: str, output_path: str, log, create_backup_file: bool = True):
     """
     从PNG文件夹替换贴图
     """
@@ -140,14 +159,11 @@ def process_bundle_replacement(bundle_path: str, image_folder: str, output_path:
             for asset_name, _ in replacement_tasks:
                 log(f"  - {asset_name}")
 
-        log(f"\n正在将修改后的 bundle 保存到: {Path(output_path).name}")
-        log("压缩方式: LZMA (这可能需要一些时间...)")
-        
-        with open(output_path, "wb") as f:
-            f.write(env.file.save(packer="lzma"))
-        
-        log("\n🎉 处理完成！新的 bundle 文件已成功保存。")
-        return True, f"处理完成！\n成功替换 {replacement_count} 个资源。\n\n文件已保存至:\n{output_path}"
+        if save_bundle(env, output_path, log):
+            log("\n🎉 处理完成！")
+            return True, f"处理完成！\n成功替换 {replacement_count} 个资源。\n\n文件已保存至:\n{output_path}"
+        else:
+            return False, "保存文件失败，请检查日志获取详细信息。"
 
     except Exception as e:
         log(f"\n❌ 严重错误: 处理 bundle 文件时发生错误: {e}")
@@ -216,14 +232,13 @@ def _b2b_replace(old_bundle_path: str, new_bundle_path: str, log, asset_types_to
 
 def process_bundle_to_bundle_replacement(new_bundle_path: str, old_bundle_path: str, output_path: str, log, create_backup_file: bool = True):
     """
-    从旧版Bundle包替换贴图到新版Bundle包。
+    从旧版Bundle包替换指定资源类型到新版Bundle包。
     """
     try:
         if create_backup_file:
             if not create_backup(new_bundle_path, log, "b2b"):
                 return False, "创建备份失败，操作已终止。"
 
-        # 注意：此函数现在没有直接使用的地方，但为了保持API完整性，我们假设它默认只替换Texture2D
         asset_types = {"Texture2D"}
         modified_env, replacement_count = _b2b_replace(old_bundle_path, new_bundle_path, log, asset_types)
 
@@ -235,14 +250,11 @@ def process_bundle_to_bundle_replacement(new_bundle_path: str, old_bundle_path: 
             log("请确认新旧两个bundle包中确实存在同名的贴图资源。")
             return False, "没有找到任何名称匹配的 Texture2D 资源进行替换。"
 
-        log(f"\n正在将修改后的 bundle 保存到: {Path(output_path).name}")
-        log("压缩方式: LZMA (这可能需要一些时间...)")
-        
-        with open(output_path, "wb") as f:
-            f.write(modified_env.file.save(packer="lzma"))
-
-        log("\n🎉 处理完成！新的 bundle 文件已成功保存。")
-        return True, f"处理完成！\n成功恢复/替换了 {replacement_count} 个资源。\n\n文件已保存至:\n{output_path}"
+        if save_bundle(modified_env, output_path, log):
+            log("\n🎉 处理完成！")
+            return True, f"处理完成！\n成功恢复/替换了 {replacement_count} 个资源。\n\n文件已保存至:\n{output_path}"
+        else:
+            return False, "保存文件失败，请检查日志获取详细信息。"
 
     except Exception as e:
         log(f"\n❌ 严重错误: 处理 bundle 文件时发生错误: {e}")
@@ -350,11 +362,11 @@ def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_
         if perform_crc:
             uncrc_path = base_working_dir / f"uncrc_{new_bundle_path.name}"
             log(f"\n--- 阶段 2: 保存与CRC修正 ---")
-            log(f"  > 正在保存未修正CRC的中间文件到: {uncrc_path.name}")
-            with open(uncrc_path, "wb") as f:
-                f.write(modified_env.file.save(packer="lzma"))
-            log("  > 中间文件保存成功。")
+            log(f"  > 准备保存未修正CRC的中间文件...")
             
+            if not save_bundle(modified_env, str(uncrc_path), log):
+                return False, "保存中间文件失败，操作已终止。"
+
             log(f"  > 正在复制 '{uncrc_path.name}' 到 '{final_path.name}' 以进行CRC修正。")
             shutil.copy2(uncrc_path, final_path)
             
@@ -379,10 +391,9 @@ def process_mod_update(old_mod_path_str: str, new_bundle_path_str: str, working_
 
         else:
             log(f"\n--- 阶段 2: 保存最终文件 ---")
-            log(f"  > 正在直接保存最终文件到: {final_path.name}")
-            with open(final_path, "wb") as f:
-                f.write(modified_env.file.save(packer="lzma"))
-            log("  > 最终文件保存成功。")
+            log(f"  > 准备直接保存最终文件...")
+            if not save_bundle(modified_env, str(final_path), log):
+                return False, "保存最终文件失败，操作已终止。"
 
         log(f"最终文件已保存至: {final_path}")
         log(f"\n🎉 全部流程处理完成！")

@@ -51,7 +51,7 @@ class Theme:
     FRAME_FONT = ("Microsoft YaHei", 11, "bold")
     INPUT_FONT = ("Microsoft YaHei", 9)
     BUTTON_FONT = ("Microsoft YaHei", 10, "bold")
-    LOG_FONT = ("SimSun", 10)
+    LOG_FONT = ("SimSun", 9)
 
 
 # --- UI 组件工厂 ---
@@ -60,34 +60,38 @@ class UIComponents:
     """一个辅助类，用于创建通用的UI组件，以减少重复代码。"""
 
     @staticmethod
-    def create_file_drop_zone(parent, title, drop_cmd, browse_cmd):
+    def create_drop_zone(parent, title, drop_cmd, browse_cmd, label_text, button_text):
+        """创建通用的拖放区域组件"""
         frame = tk.LabelFrame(parent, text=title, font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
         frame.pack(fill=tk.X, pady=(0, 10))
 
-        label = tk.Label(frame, text="将文件拖放到此处\n或点击下方按钮选择", relief=tk.GROOVE, height=4, bg=Theme.MUTED_BG, fg=Theme.TEXT_NORMAL, font=Theme.INPUT_FONT, justify=tk.LEFT)
+        label = tk.Label(frame, text=label_text, relief=tk.GROOVE, height=4, bg=Theme.MUTED_BG, fg=Theme.TEXT_NORMAL, font=Theme.INPUT_FONT, justify=tk.LEFT)
         label.pack(fill=tk.X, pady=(0, 8))
         label.drop_target_register(DND_FILES)
         label.dnd_bind('<<Drop>>', drop_cmd)
         label.bind('<Configure>', lambda e: e.widget.config(wraplength=e.width - 10))
 
-        button = tk.Button(frame, text="浏览文件...", command=browse_cmd, font=Theme.INPUT_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
+        button = tk.Button(frame, text=button_text, command=browse_cmd, font=Theme.INPUT_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
         button.pack()
         return frame, label
 
     @staticmethod
+    def create_file_drop_zone(parent, title, drop_cmd, browse_cmd):
+        """创建文件拖放区域"""
+        return UIComponents.create_drop_zone(
+            parent, title, drop_cmd, browse_cmd, 
+            "将文件拖放到此处\n或点击下方按钮选择", 
+            "浏览文件..."
+        )
+
+    @staticmethod
     def create_folder_drop_zone(parent, title, drop_cmd, browse_cmd):
-        frame = tk.LabelFrame(parent, text=title, font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
-        frame.pack(fill=tk.X, pady=(0, 10))
-
-        label = tk.Label(frame, text="将文件夹拖放到此处\n或点击下方按钮选择", relief=tk.GROOVE, height=4, bg=Theme.MUTED_BG, fg=Theme.TEXT_NORMAL, font=Theme.INPUT_FONT, justify=tk.LEFT)
-        label.pack(fill=tk.X, pady=(0, 8))
-        label.drop_target_register(DND_FILES)
-        label.dnd_bind('<<Drop>>', drop_cmd)
-        label.bind('<Configure>', lambda e: e.widget.config(wraplength=e.width - 10))
-
-        button = tk.Button(frame, text="浏览文件夹...", command=browse_cmd, font=Theme.INPUT_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
-        button.pack()
-        return frame, label
+        """创建文件夹拖放区域"""
+        return UIComponents.create_drop_zone(
+            parent, title, drop_cmd, browse_cmd,
+            "将文件夹拖放到此处\n或点击下方按钮选择",
+            "浏览文件夹..."
+        )
 
     @staticmethod
     def create_output_path_entry(parent, title, textvariable, save_cmd):
@@ -205,7 +209,7 @@ class ModUpdateTab(TabFrame):
         action_button_frame.pack(fill=tk.X, pady=10)
         action_button_frame.grid_columnconfigure((0, 1), weight=1)
 
-        run_button = tk.Button(action_button_frame, text="开始一键更新", command=self.run_update_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_ACCENT_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8)
+        run_button = tk.Button(action_button_frame, text="开始一键更新", command=self.run_update_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8)
         run_button.grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=10)
         
         self.replace_button = tk.Button(action_button_frame, text="覆盖原文件", command=self.replace_original_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8, state=tk.DISABLED)
@@ -447,7 +451,7 @@ class PngReplacementTab(TabFrame):
         self.logger.log("开始从 PNG 文件夹替换...")
         self.logger.status("正在处理中，请稍候...")
         
-        success, message = processing.process_bundle_replacement(
+        success, message = processing.process_png_replacement(
             str(self.bundle_path), 
             str(self.folder_path), 
             self.output_path.get(), 
@@ -559,6 +563,25 @@ class CrcToolTab(TabFrame):
         self.logger.log("开始CRC修正过程...")
         self.logger.status("正在进行CRC修正...")
         try:
+            # 先检测CRC是否一致
+            self.logger.log("正在检测CRC值是否匹配...")
+            try:
+                is_crc_match = CRCUtils.check_crc_match(str(self.original_path), str(self.modified_path))
+            except Exception as e:
+                self.logger.log(f"⚠️ 警告: 检测CRC值时发生错误: {e}")
+                messagebox.showerror("错误", "检测CRC值时发生错误。请检查原始文件和修改后文件是否正确。")
+                self.logger.status("CRC检测失败")
+                return False
+            
+            
+            if is_crc_match:
+                self.logger.log("✅ CRC值已匹配，无需修正")
+                messagebox.showinfo("CRC检测结果", "CRC值已匹配，无需进行修正操作。")
+                self.logger.status("CRC检测完成")
+                return True
+            
+            self.logger.log("❌ CRC值不匹配，开始进行CRC修正...")
+            
             backup_message = ""
             if self.create_backup.get():
                 # 创建备份文件
@@ -580,11 +603,14 @@ class CrcToolTab(TabFrame):
                 self.logger.log("❌ CRC修正失败")
                 messagebox.showerror("失败", "CRC 修正失败。")
             self.logger.status("CRC修正完成")
+            return success
                 
         except Exception as e:
             self.logger.log(f"❌ 错误：{e}")
             messagebox.showerror("错误", f"执行过程中发生错误:\n{e}")
-
+            self.logger.status("CRC修正失败")
+            return False
+        
     def calculate_values(self):
         self.logger.log("\n" + "="*50); self.logger.log("开始计算CRC值...")
         self.logger.status("正在计算CRC...")

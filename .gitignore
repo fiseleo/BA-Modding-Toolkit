@@ -5,4 +5,5 @@ dist
 main.spec
 testbundle
 old
+absolute
 __pycache__
