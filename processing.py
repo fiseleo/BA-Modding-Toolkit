@@ -182,8 +182,13 @@ def _b2b_replace(old_bundle_path: Path, new_bundle_path: Path, log, asset_types_
         # 根据传入的类型集合进行筛选
         if obj.type.name in asset_types_to_replace:
             data = obj.read()
-            # 使用一种通用的方法存储资源数据，以便恢复
-            old_assets_map[data.m_Name] = (obj.type.name, obj.get_raw_data())
+            # 对于 Texture2D 类型，只提取其图像内容 (PIL.Image 对象)
+            # 保留目标文件中的格式等元数据
+            if obj.type.name == "Texture2D":
+                old_assets_map[data.m_Name] = (obj.type.name, data.image)
+            # 对于其他类型的资源，仍然使用原始数据替换的旧方法
+            else:
+                old_assets_map[data.m_Name] = (obj.type.name, obj.get_raw_data())
     
     if not old_assets_map:
         log(f"⚠️ 警告: 在旧版 bundle 中没有找到任何指定类型的资源 ({', '.join(asset_types_to_replace)})。")
@@ -199,11 +204,10 @@ def _b2b_replace(old_bundle_path: Path, new_bundle_path: Path, log, asset_types_
     replacement_count = 0
     replaced_assets = []
     for obj in new_env.objects:
-        # 同样，只关心指定类型的资源
         if obj.type.name in asset_types_to_replace:
             new_data = obj.read()
             if new_data.m_Name in old_assets_map:
-                old_type_name, old_raw_data = old_assets_map[new_data.m_Name]
+                old_type_name, old_content = old_assets_map[new_data.m_Name]
                 
                 # 安全检查：确保资源类型匹配
                 if obj.type.name != old_type_name:
@@ -212,9 +216,18 @@ def _b2b_replace(old_bundle_path: Path, new_bundle_path: Path, log, asset_types_
 
                 log(f"  > 找到匹配资源 '{new_data.m_Name}' (类型: {obj.type.name})，准备从旧版恢复...")
                 try:
-                    # 使用 set_raw_data 进行通用替换，无需关心具体类型
-                    obj.set_raw_data(old_raw_data)
-                    log(f"    ✅ 成功: 资源 '{new_data.m_Name}' 已被恢复。")
+                    # 对 Texture2D 进行特殊处理，保留目标文件中的格式等元数据
+                    if obj.type.name == "Texture2D":
+                        old_image = old_content
+                        new_data.image = old_image
+                        new_data.save()
+                        log(f"    ✅ 成功: 资源 '{new_data.m_Name}' 的图像内容已恢复，以 {new_data.m_TextureFormat.name} 格式保存。")
+                    # 对于其他资源类型，保持原有的原始数据替换逻辑
+                    else:
+                        # old_content 此处是原始字节数据
+                        obj.set_raw_data(old_content)
+                        log(f"    ✅ 成功: 资源 '{new_data.m_Name}' 的原始数据已被恢复。")
+
                     replacement_count += 1
                     replaced_assets.append(f"{new_data.m_Name} ({obj.type.name})")
                 except Exception as e:
