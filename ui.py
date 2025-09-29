@@ -173,21 +173,21 @@ class ModUpdateTab(TabFrame):
 
         # 1. 旧版 Mod 文件
         _, self.old_mod_label = UIComponents.create_file_drop_zone(
-            self, "拖入旧版 Mod Bundle", self.drop_old_mod, self.browse_old_mod
+            self, "旧版 Mod Bundle", self.drop_old_mod, self.browse_old_mod
         )
         
         # 2. 新版游戏资源文件
         new_mod_frame, self.new_mod_label = UIComponents.create_file_drop_zone(
-            self, "新版游戏资源 Bundle", self.drop_new_mod, self.browse_new_mod
+            self, "目标 Bundle 文件", self.drop_new_mod, self.browse_new_mod
         )
         # 自定义拖放区的提示文本，使其更具指导性
-        self.new_mod_label.config(text="拖入旧版Mod后将自动查找新版资源\n或手动拖放/浏览文件")
+        self.new_mod_label.config(text="拖入旧版Mod后将自动查找目标资源\n或手动拖放/浏览文件")
 
         # 创建并插入用于显示游戏资源目录的额外组件
         auto_find_frame = tk.Frame(new_mod_frame, bg=Theme.FRAME_BG)
         # 使用 pack 的 before 参数，将此组件插入到拖放区标签(self.new_mod_label)的上方
         auto_find_frame.pack(fill=tk.X, pady=(0, 8), before=self.new_mod_label)
-        tk.Label(auto_find_frame, text="游戏资源目录:", bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL).pack(side=tk.LEFT, padx=(0,5))
+        tk.Label(auto_find_frame, text="查找路径:", bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL).pack(side=tk.LEFT, padx=(0,5))
         tk.Entry(auto_find_frame, textvariable=self.game_resource_dir_var, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1, state='readonly').pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # 3. 选项和操作
@@ -230,16 +230,16 @@ class ModUpdateTab(TabFrame):
         self.set_new_mod_file(path)
 
     def browse_new_mod(self):
-        p = filedialog.askopenfilename(title="选择新版游戏资源 Bundle")
+        p = filedialog.askopenfilename(title="选择目标资源 Bundle")
         if p:
             self.set_new_mod_file(Path(p))
             
     def set_new_mod_file(self, path: Path):
-        """统一设置新版Mod文件的路径和UI显示"""
+        """统一设置目标资源文件的路径和UI显示"""
         self.new_mod_path = path
-        self.new_mod_label.config(text=f"已选择新版资源:{path.name}", fg=Theme.COLOR_SUCCESS)
-        self.logger.log(f"已加载新版资源: {path.name}")
-        self.logger.status("已加载新版资源")
+        self.new_mod_label.config(text=f"已选择目标资源:{path.name}", fg=Theme.COLOR_SUCCESS)
+        self.logger.log(f"已加载目标资源: {path}")
+        self.logger.status("已加载目标资源")
 
     # 自动查找相关方法
     def auto_find_new_bundle(self):
@@ -267,11 +267,11 @@ class ModUpdateTab(TabFrame):
             short_message = message.split('。')[0]
             ui_message = f"❌ 未找到资源: {short_message}"
             self.new_mod_label.config(text=ui_message, fg=Theme.COLOR_ERROR)
-            self.logger.status("未找到匹配的新版资源")
+            self.logger.status("未找到匹配的目标资源")
 
     def run_update_thread(self):
         if not all([self.old_mod_path, self.new_mod_path, self.game_resource_dir_var.get(), self.work_dir_var.get()]):
-            messagebox.showerror("错误", "请确保已分别指定旧版Mod、新版游戏资源，并设置了游戏资源目录和工作目录。")
+            messagebox.showerror("错误", "请确保已分别指定旧版Mod、目标资源 Bundle，并设置了游戏资源目录和工作目录。")
             return
         
         # 检查是否至少选择了一种资源类型
@@ -350,7 +350,7 @@ class ModUpdateTab(TabFrame):
             messagebox.showerror("错误", "找不到已生成的 Mod 文件。\n请先成功执行一次'一键更新'。")
             return
         if not self.new_mod_path or not self.new_mod_path.exists():
-            messagebox.showerror("错误", "找不到原始游戏资源文件路径。\n请确保在更新前已正确指定新版游戏资源。")
+            messagebox.showerror("错误", "找不到原始游戏资源文件路径。\n请确保在更新前已正确指定目标资源 Bundle。")
             return
         
         self.run_in_thread(self.replace_original)
@@ -358,15 +358,15 @@ class ModUpdateTab(TabFrame):
     def replace_original(self):
         """执行实际的文件替换操作（在线程中）"""
         if not messagebox.askyesno("警告", 
-                                   f"此操作将覆盖游戏目录中的原始文件:\n\n{self.new_mod_path.name}\n\n"
+                                   f"此操作将覆盖资源目录中的原始文件:\n\n{self.new_mod_path}\n\n"
                                    "如果要继续，请确保已备份原始文件，或是在全局设置中开启备份功能。\n\n确定要继续吗？"):
             return
 
         self.logger.log("\n" + "="*50)
-        self.logger.log(f"开始覆盖游戏原文件 '{self.new_mod_path.name}'...")
+        self.logger.log(f"开始覆盖原资源文件 '{self.new_mod_path}'...")
         self.logger.status("正在覆盖文件...")
         try:
-            # 目标文件就是新版游戏资源文件
+            # 目标文件就是目标资源文件
             target_file = self.new_mod_path
             # 源文件是刚刚生成的新Mod
             source_file = self.final_output_path
@@ -384,9 +384,9 @@ class ModUpdateTab(TabFrame):
             self.logger.log(f"  > 正在用 '{source_file.name}' 覆盖 '{target_file.name}'...")
             shutil.copy2(source_file, target_file)
             
-            self.logger.log("✅ 原始文件已成功覆盖！")
+            self.logger.log("✅ 目标资源文件已成功覆盖！")
             self.logger.status("文件覆盖完成")
-            messagebox.showinfo("成功", f"游戏原始文件已成功覆盖！{backup_message}")
+            messagebox.showinfo("成功", f"目标资源文件已成功覆盖！{backup_message}")
 
         except Exception as e:
             self.logger.log(f"❌ 文件覆盖失败: {e}")
@@ -395,58 +395,67 @@ class ModUpdateTab(TabFrame):
 
 
 class PngReplacementTab(TabFrame):
-    def create_widgets(self, output_dir_var, create_backup_var):
-        self.bundle_path = None
-        self.folder_path = None
-        self.output_path = tk.StringVar()
+    def create_widgets(self, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var):
+        self.bundle_path: Path = None
+        self.folder_path: Path = None
+        self.final_output_path: Path = None
+        
+        # 接收共享变量
+        self.work_dir_var = output_dir_var
+        self.enable_padding = enable_padding_var
+        self.enable_crc_correction = enable_crc_correction_var
         self.create_backup = create_backup_var
-        # 接收共享的输出目录变量
-        self.output_dir_var = output_dir_var
 
+        # 1. PNG 图片文件夹
         _, self.folder_label = UIComponents.create_folder_drop_zone(
             self, "PNG 图片文件夹", self.drop_folder, self.browse_folder
         )
 
+        # 2. 目标 Bundle 文件
         _, self.bundle_label = UIComponents.create_file_drop_zone(
             self, "目标 Bundle 文件", self.drop_bundle, self.browse_bundle
         )
         
-        run_button = tk.Button(self, text="开始替换", command=self.run_replacement_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=20, pady=10)
-        run_button.pack(pady=20)
+        # 3. 操作按钮区域
+        action_button_frame = tk.Frame(self)
+        action_button_frame.pack(fill=tk.X, pady=10)
+        action_button_frame.grid_columnconfigure((0, 1), weight=1)
 
-    def drop_bundle(self, event): self.set_file_path('bundle_path', self.bundle_label, Path(event.data.strip('{}')), "目标 Bundle", self.auto_set_output)
+        run_button = tk.Button(action_button_frame, text="生成替换文件", command=self.run_replacement_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8)
+        run_button.grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=10)
+        
+        self.replace_button = tk.Button(action_button_frame, text="覆盖原文件", command=self.replace_original_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8, state=tk.DISABLED)
+        self.replace_button.grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=10)
+
+    def drop_bundle(self, event):
+        self.set_file_path('bundle_path', self.bundle_label, Path(event.data.strip('{}')), "目标 Bundle")
     def browse_bundle(self):
-        p = filedialog.askopenfilename(title="选择目标 Bundle 文件");
-        if p: self.set_file_path('bundle_path', self.bundle_label, Path(p), "目标 Bundle", self.auto_set_output)
+        p = filedialog.askopenfilename(title="选择目标 Bundle 文件")
+        if p: self.set_file_path('bundle_path', self.bundle_label, Path(p), "目标 Bundle")
     
-    def drop_folder(self, event): self.set_folder_path('folder_path', self.folder_label, Path(event.data.strip('{}')), "PNG 文件夹")
+    def drop_folder(self, event):
+        self.set_folder_path('folder_path', self.folder_label, Path(event.data.strip('{}')), "PNG 文件夹")
     def browse_folder(self):
-        p = filedialog.askdirectory(title="选择 PNG 图片文件夹");
+        p = filedialog.askdirectory(title="选择 PNG 图片文件夹")
         if p: self.set_folder_path('folder_path', self.folder_label, Path(p), "PNG 文件夹")
 
-    def auto_set_output(self):
-        if self.bundle_path and self.output_dir_var.get():
-            p = self.bundle_path
-            output_dir = Path(self.output_dir_var.get())
-            new_name = f"{p.stem}_modified{p.suffix}"
-            self.output_path.set(output_dir / new_name)
-            self.logger.log(f"输出路径已自动设置为: {self.output_path.get()}")
-
     def run_replacement_thread(self):
-        if not all([self.bundle_path, self.folder_path, self.output_path.get()]):
-            messagebox.showerror("错误", "请确保已选择目标 Bundle、PNG 文件夹，并在主界面设置了输出目录。")
+        if not all([self.bundle_path, self.folder_path, self.work_dir_var.get()]):
+            messagebox.showerror("错误", "请确保已选择目标 Bundle、PNG 文件夹，并在全局设置中指定了工作目录。")
             return
-        
-        # 确保输出目录存在
-        try:
-            Path(self.output_path.get()).parent.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            messagebox.showerror("错误", f"无法创建输出目录:\n{e}")
-            return
-            
         self.run_in_thread(self.run_replacement)
 
     def run_replacement(self):
+        self.final_output_path = None
+        self.master.after(0, lambda: self.replace_button.config(state=tk.DISABLED))
+
+        work_dir = Path(self.work_dir_var.get())
+        try:
+            work_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            messagebox.showerror("错误", f"无法创建工作目录:\n{work_dir}\n\n错误详情: {e}")
+            return
+
         self.logger.log("\n" + "="*50)
         self.logger.log("开始从 PNG 文件夹替换...")
         self.logger.status("正在处理中，请稍候...")
@@ -454,15 +463,76 @@ class PngReplacementTab(TabFrame):
         success, message = processing.process_png_replacement(
             self.bundle_path,
             self.folder_path,
-            Path(self.output_path.get()),
-            self.logger.log,
-            create_backup_file=self.create_backup.get()
+            work_dir,
+            self.enable_padding.get(),
+            self.enable_crc_correction.get(),
+            self.logger.log
         )
         
-        if success: messagebox.showinfo("成功", message)
-        else: messagebox.showwarning("警告", message)
+        if success:
+            generated_bundle_filename = self.bundle_path.name
+            self.final_output_path = work_dir / generated_bundle_filename
+            
+            if self.final_output_path.exists():
+                self.logger.log(f"✅ 替换成功。最终文件路径: {self.final_output_path}")
+                self.logger.log(f"现在可以点击 '覆盖原文件' 按钮来应用更改。")
+                self.master.after(0, lambda: self.replace_button.config(state=tk.NORMAL))
+                messagebox.showinfo("成功", message)
+            else:
+                self.logger.log(f"⚠️ 警告: 替换成功，但无法找到生成的 Mod 文件。请在 '{work_dir}' 目录中查找。")
+                self.master.after(0, lambda: self.replace_button.config(state=tk.DISABLED))
+                messagebox.showinfo("成功 (路径未知)", message + "\n\n⚠️ 警告：无法自动找到生成的文件，请在工作目录中手动查找。")
+        else:
+            messagebox.showerror("失败", message)
+        
         self.logger.status("处理完成")
 
+    def replace_original_thread(self):
+        """启动替换原始游戏文件的线程"""
+        if not self.final_output_path or not self.final_output_path.exists():
+            messagebox.showerror("错误", "找不到已生成的替换文件。\n请先成功执行一次'生成替换文件'。")
+            return
+        if not self.bundle_path or not self.bundle_path.exists():
+            messagebox.showerror("错误", "找不到原始目标文件路径。\n请确保在开始前已正确指定目标文件。")
+            return
+        
+        self.run_in_thread(self.replace_original)
+
+    def replace_original(self):
+        """执行实际的文件替换操作（在线程中）"""
+        if not messagebox.askyesno("警告", 
+                                   f"此操作将覆盖原始文件:\n\n{self.bundle_path.name}\n\n"
+                                   "如果要继续，请确保已备份原始文件，或是在全局设置中开启备份功能。\n\n确定要继续吗？"):
+            return
+
+        self.logger.log("\n" + "="*50)
+        self.logger.log(f"开始覆盖原文件 '{self.bundle_path.name}'...")
+        self.logger.status("正在覆盖文件...")
+        try:
+            target_file = self.bundle_path
+            source_file = self.final_output_path
+            
+            backup_message = ""
+            if self.create_backup.get():
+                backup_path = target_file.with_suffix(target_file.suffix + '.backup')
+                self.logger.log(f"  > 正在备份原始文件到: {backup_path.name}")
+                shutil.copy2(target_file, backup_path)
+                backup_message = f"\n\n原始文件备份至:\n{backup_path.name}"
+            else:
+                self.logger.log("  > 已根据设置跳过创建备份文件。")
+                backup_message = "\n\n(已跳过创建备份)"
+            
+            self.logger.log(f"  > 正在用 '{source_file.name}' 覆盖 '{target_file.name}'...")
+            shutil.copy2(source_file, target_file)
+            
+            self.logger.log("✅ 原始文件已成功覆盖！")
+            self.logger.status("文件覆盖完成")
+            messagebox.showinfo("成功", f"原始文件已成功覆盖！{backup_message}")
+
+        except Exception as e:
+            self.logger.log(f"❌ 文件覆盖失败: {e}")
+            self.logger.status("文件覆盖失败")
+            messagebox.showerror("错误", f"文件覆盖过程中发生错误:\n{e}")
 
 class CrcToolTab(TabFrame):
     def create_widgets(self, game_resource_dir_var, enable_padding_var, create_backup_var):
@@ -490,7 +560,7 @@ class CrcToolTab(TabFrame):
         auto_find_frame = tk.Frame(original_frame, bg=Theme.FRAME_BG)
         # 使用 pack 的 before 参数，将此组件插入到拖放区标签(self.original_label)的上方
         auto_find_frame.pack(fill=tk.X, pady=(0, 8), before=self.original_label)
-        tk.Label(auto_find_frame, text="自动寻找路径:", bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL).pack(side=tk.LEFT, padx=(0,5))
+        tk.Label(auto_find_frame, text="查找路径:", bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL).pack(side=tk.LEFT, padx=(0,5))
         tk.Entry(auto_find_frame, textvariable=self.game_resource_dir_var, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1, state='readonly').pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # 3. 选项与操作
@@ -859,5 +929,7 @@ class App(tk.Frame):
         # Tab: PNG 替换
         png_tab = PngReplacementTab(self.notebook, self.logger, 
                                     output_dir_var=self.output_dir_var,
+                                    enable_padding_var=self.enable_padding_var,
+                                    enable_crc_correction_var=self.enable_crc_correction_var,
                                     create_backup_var=self.create_backup_var)
         self.notebook.add(png_tab, text="PNG 文件夹替换")
