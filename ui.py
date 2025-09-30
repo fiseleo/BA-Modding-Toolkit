@@ -271,7 +271,7 @@ class ModUpdateTab(TabFrame):
 
     def run_update_thread(self):
         if not all([self.old_mod_path, self.new_mod_path, self.game_resource_dir_var.get(), self.work_dir_var.get()]):
-            messagebox.showerror("错误", "请确保已分别指定旧版Mod、目标资源 Bundle，并设置了游戏资源目录和工作目录。")
+            messagebox.showerror("错误", "请确保已分别指定旧版Mod、目标资源 Bundle，并设置了游戏资源目录和输出目录。")
             return
         
         # 检查是否至少选择了一种资源类型
@@ -295,7 +295,7 @@ class ModUpdateTab(TabFrame):
             # 确保基础输出目录存在
             work_dir.mkdir(parents=True, exist_ok=True) 
         except Exception as e:
-            messagebox.showerror("错误", f"无法创建工作目录:\n{work_dir}\n\n错误详情: {e}")
+            messagebox.showerror("错误", f"无法创建输出目录:\n{work_dir}\n\n错误详情: {e}")
             return
 
         self.logger.log("\n" + "="*50)
@@ -441,7 +441,7 @@ class PngReplacementTab(TabFrame):
 
     def run_replacement_thread(self):
         if not all([self.bundle_path, self.folder_path, self.work_dir_var.get()]):
-            messagebox.showerror("错误", "请确保已选择目标 Bundle、PNG 文件夹，并在全局设置中指定了工作目录。")
+            messagebox.showerror("错误", "请确保已选择目标 Bundle、PNG 文件夹，并在全局设置中指定了输出目录。")
             return
         self.run_in_thread(self.run_replacement)
 
@@ -453,7 +453,7 @@ class PngReplacementTab(TabFrame):
         try:
             work_dir.mkdir(parents=True, exist_ok=True)
         except Exception as e:
-            messagebox.showerror("错误", f"无法创建工作目录:\n{work_dir}\n\n错误详情: {e}")
+            messagebox.showerror("错误", f"无法创建输出目录:\n{work_dir}\n\n错误详情: {e}")
             return
 
         self.logger.log("\n" + "="*50)
@@ -481,7 +481,7 @@ class PngReplacementTab(TabFrame):
             else:
                 self.logger.log(f"⚠️ 警告: 替换成功，但无法找到生成的 Mod 文件。请在 '{work_dir}' 目录中查找。")
                 self.master.after(0, lambda: self.replace_button.config(state=tk.DISABLED))
-                messagebox.showinfo("成功 (路径未知)", message + "\n\n⚠️ 警告：无法自动找到生成的文件，请在工作目录中手动查找。")
+                messagebox.showinfo("成功 (路径未知)", message + "\n\n⚠️ 警告：无法自动找到生成的文件，请在输出目录中手动查找。")
         else:
             messagebox.showerror("失败", message)
         
@@ -623,7 +623,17 @@ class CrcToolTab(TabFrame):
         if self._validate_paths(): self.run_in_thread(self.run_correction)
 
     def calculate_values_thread(self):
-        if self._validate_paths(): self.run_in_thread(self.calculate_values)
+        # 检查路径情况
+        if not self.modified_path:
+            messagebox.showerror("错误", "请至少提供一个文件路径。")
+            return
+        
+        # 如果只有修改后文件，计算其CRC32值
+        if not self.original_path:
+            self.run_in_thread(self.calculate_single_value)
+        # 如果两个文件都有，保持原有行为
+        else:
+            self.run_in_thread(self.calculate_values)
 
     def replace_original_thread(self):
         if self._validate_paths(): self.run_in_thread(self.replace_original)
@@ -681,8 +691,23 @@ class CrcToolTab(TabFrame):
             self.logger.status("CRC修正失败")
             return False
         
+    def calculate_single_value(self):
+        """计算单个文件的CRC32值"""
+        self.logger.status("正在计算CRC...")
+        try:
+            with open(self.modified_path, "rb") as f: file_data = f.read()
+
+            crc_hex = f"{CRCUtils.compute_crc32(file_data):08X}"
+            
+            self.logger.log(f"文件 CRC32: {crc_hex}")
+            messagebox.showinfo("CRC计算结果", f"文件 CRC32: {crc_hex}")
+            
+        except Exception as e:
+            self.logger.log(f"❌ 计算CRC时发生错误: {e}")
+            messagebox.showerror("错误", f"计算CRC时发生错误:\n{e}")
+
     def calculate_values(self):
-        self.logger.log("\n" + "="*50); self.logger.log("开始计算CRC值...")
+        """计算两个文件的CRC32值，并判断是否匹配"""
         self.logger.status("正在计算CRC...")
         try:
             with open(self.original_path, "rb") as f: original_data = f.read()
@@ -691,15 +716,17 @@ class CrcToolTab(TabFrame):
             original_crc_hex = f"{CRCUtils.compute_crc32(original_data):08X}"
             modified_crc_hex = f"{CRCUtils.compute_crc32(modified_data):08X}"
             
-            self.logger.log(f"原始文件 CRC32: {original_crc_hex}")
             self.logger.log(f"修改后文件 CRC32: {modified_crc_hex}")
-            
+            self.logger.log(f"原始文件 CRC32: {original_crc_hex}")
+
+            msg = f"修改后文件 CRC32: {modified_crc_hex}\n原始文件 CRC32: {original_crc_hex}\n"
+
             if original_crc_hex == modified_crc_hex:
-                self.logger.log("CRC值匹配: 是")
-                messagebox.showinfo("CRC计算结果", f"原始文件 CRC32: {original_crc_hex}\n修改后文件 CRC32: {modified_crc_hex}\n\n✅ CRC值匹配: 是")
+                self.logger.log("    CRC值匹配: ✅是")
+                messagebox.showinfo("CRC计算结果", f"{msg}\n✅ CRC值匹配: 是")
             else:
-                self.logger.log("CRC值匹配: 否")
-                messagebox.showwarning("CRC计算结果", f"原始文件 CRC32: {original_crc_hex}\n修改后文件 CRC32: {modified_crc_hex}\n\n❌ CRC值匹配: 否")
+                self.logger.log("    CRC值匹配: ❌否")
+                messagebox.showwarning("CRC计算结果", f"{msg}\n❌ CRC值匹配: 否")
         except Exception as e:
             self.logger.log(f"❌ 计算CRC时发生错误: {e}")
             messagebox.showerror("错误", f"计算CRC时发生错误:\n{e}")
@@ -783,7 +810,7 @@ class App(tk.Frame):
             self.select_game_resource_directory, self.open_game_resource_in_explorer
         )
         UIComponents.create_directory_path_entry(
-            shared_settings_frame, "输出/工作目录", self.output_dir_var,
+            shared_settings_frame, "输出目录", self.output_dir_var,
             self.select_output_directory, self.open_output_dir_in_explorer
         )
         
@@ -869,7 +896,7 @@ class App(tk.Frame):
         self._open_directory_in_explorer(self.game_resource_dir_var.get())
 
     def select_output_directory(self):
-        self._select_directory(self.output_dir_var, "选择输出/工作目录")
+        self._select_directory(self.output_dir_var, "选择输出目录")
 
     def open_output_dir_in_explorer(self):
         self._open_directory_in_explorer(self.output_dir_var.get(), create_if_not_exist=True)
