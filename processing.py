@@ -209,13 +209,16 @@ def _b2b_replace(old_bundle_path: Path, new_bundle_path: Path, log, asset_types_
         # 根据传入的类型集合进行筛选
         if obj.type.name in asset_types_to_replace:
             data = obj.read()
+            # 使用 path_id 作为唯一主键，名称和类型仅用于显示
+            asset_key = obj.path_id
+            
             # 对于 Texture2D 类型，只提取其图像内容 (PIL.Image 对象)
             # 保留目标文件中的格式等元数据
             if obj.type.name == "Texture2D":
-                old_assets_map[data.m_Name] = (obj.type.name, data.image)
+                old_assets_map[asset_key] = data.image
             # 对于其他类型的资源，仍然使用原始数据替换的旧方法
             else:
-                old_assets_map[data.m_Name] = (obj.type.name, obj.get_raw_data())
+                old_assets_map[asset_key] = obj.get_raw_data()
     
     if not old_assets_map:
         log(f"⚠️ 警告: 在旧版 bundle 中没有找到任何指定类型的资源 ({', '.join(asset_types_to_replace)})。")
@@ -233,35 +236,30 @@ def _b2b_replace(old_bundle_path: Path, new_bundle_path: Path, log, asset_types_
     for obj in new_env.objects:
         if obj.type.name in asset_types_to_replace:
             new_data = obj.read()
-            if new_data.m_Name in old_assets_map:
-                old_type_name, old_content = old_assets_map[new_data.m_Name]
-                
-                # 安全检查：确保资源类型匹配
-                if obj.type.name != old_type_name:
-                    log(f"    ⚠️ 警告: 资源 '{new_data.m_Name}' 类型不匹配 (新: {obj.type.name}, 旧: {old_type_name})。已跳过。")
-                    continue
-
-                log(f"  > 找到匹配资源 '{new_data.m_Name}' (类型: {obj.type.name})，准备从旧版恢复...")
+            # 使用 path_id 作为主键进行查找
+            asset_key = obj.path_id
+            if asset_key in old_assets_map:
+                old_content = old_assets_map[asset_key]
                 try:
                     # 对 Texture2D 进行特殊处理，保留目标文件中的格式等元数据
                     if obj.type.name == "Texture2D":
                         old_image = old_content
                         new_data.image = old_image
                         new_data.save()
-                        log(f"    ✅ 成功: 资源 '{new_data.m_Name}' 的图像内容已恢复，以 {new_data.m_TextureFormat.name} 格式保存。")
+                        log(f"  ✅ 成功: 图像 '{new_data.m_Name}' ({new_data.m_TextureFormat.name}格式)已替换。")
                     # 对于其他资源类型，保持原有的原始数据替换逻辑
                     else:
                         # old_content 此处是原始字节数据
                         obj.set_raw_data(old_content)
-                        log(f"    ✅ 成功: 资源 '{new_data.m_Name}' 的原始数据已被恢复。")
+                        log(f"  ✅ 成功: 资源 '{new_data.m_Name}' ({obj.type.name}类型)已替换。")
 
                     replacement_count += 1
-                    replaced_assets.append(f"{new_data.m_Name} ({obj.type.name})")
+                    replaced_assets.append(f"{new_data.m_Name} ({obj.type.name}, pathID: {obj.path_id})")
                 except Exception as e:
-                    log(f"    ❌ 错误: 恢复资源 '{new_data.m_Name}' 时发生错误: {e}")
+                    log(f"  ❌ 错误: 替换资源 '{new_data.m_Name}' ({obj.type.name}类型)时发生错误: {e}")
 
     if replacement_count > 0:
-        log(f"\n成功恢复/替换了 {replacement_count} 个资源:")
+        log(f"\n成功替换了 {replacement_count} 个资源:")
         for name in replaced_assets:
             log(f"  - {name}")
     
@@ -304,10 +302,11 @@ def find_new_bundle_path(old_mod_path: Path, game_resource_dir: Path, log):
     根据旧版Mod文件，在游戏资源目录中智能查找对应的新版文件。
     返回 (找到的路径对象, 状态消息) 的元组。
     """
+    # TODO: 只用Texture2D比较好像不太对，但是it works
 
-    log(f"正在为 '{old_mod_path.name}' 搜索新版文件...")
+    log(f"正在为 '{old_mod_path.name}' 搜索对应文件...")
 
-    # 1. 通过日期模式确定文件名前缀
+    # 1. 通过日期模式确定文件名前缀，且扩展名相同
     date_match = re.search(r'\d{4}-\d{2}-\d{2}', old_mod_path.name)
     if not date_match:
         msg = f"无法在旧文件名 '{old_mod_path.name}' 中找到日期模式 (YYYY-MM-DD)，无法确定用于匹配的文件前缀。"
@@ -316,12 +315,13 @@ def find_new_bundle_path(old_mod_path: Path, game_resource_dir: Path, log):
 
     prefix_end_index = date_match.start()
     search_prefix = old_mod_path.name[:prefix_end_index]
-    log(f"  > 已确定文件名前缀: '{search_prefix}...'")
+    extension = old_mod_path.suffix
+    log(f"  > 已确定文件名前缀: '{search_prefix}，扩展名: '{extension}'...'")
 
-    # 2. 查找所有候选文件
-    candidates = [f for f in game_resource_dir.iterdir() if f.is_file() and f.name.startswith(search_prefix)]
+    # 2. 查找所有候选文件（前缀相同且扩展名一致）
+    candidates = [f for f in game_resource_dir.iterdir() if f.is_file() and f.name.startswith(search_prefix) and f.suffix == extension]
     if not candidates:
-        msg = f"在游戏资源目录中未找到任何与 '{search_prefix}' 匹配的新版文件。"
+        msg = f"在指定目录 '{game_resource_dir}' 中未找到任何匹配的文件。"
         log(f"  > 失败: {msg}")
         return None, msg
     log(f"  > 找到 {len(candidates)} 个候选文件，正在验证内容...")
