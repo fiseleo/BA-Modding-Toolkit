@@ -157,7 +157,7 @@ class ModUpdateTab(TabFrame):
     def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var):
         self.old_mod_path: Path = None
         self.new_mod_path: Path = None 
-        self.final_output_path: Path = None # 新增：用于存储成功生成的文件路径
+        self.final_output_path: Path = None
         self.enable_padding: bool = enable_padding_var
         self.enable_crc_correction: bool = enable_crc_correction_var
         self.create_backup: bool = create_backup_var
@@ -313,13 +313,13 @@ class ModUpdateTab(TabFrame):
         
         # 传递 work_dir (基础输出目录) 和资源类型集合
         success, message = processing.process_mod_update(
-            self.old_mod_path,
-            self.new_mod_path,
-            work_dir,
-            self.enable_padding.get(), 
-            self.logger.log,
-            self.enable_crc_correction.get(),
-            asset_types_to_replace
+            old_mod_path = self.old_mod_path,
+            new_bundle_path = self.new_mod_path,
+            work_dir = work_dir,
+            enable_padding = self.enable_padding.get(), 
+            enable_crc_correction = self.enable_crc_correction.get(),
+            asset_types_to_replace = asset_types_to_replace,
+            log = self.logger.log
         )
         
         if success:
@@ -461,12 +461,12 @@ class PngReplacementTab(TabFrame):
         self.logger.status("正在处理中，请稍候...")
         
         success, message = processing.process_png_replacement(
-            self.bundle_path,
-            self.folder_path,
-            work_dir,
-            self.enable_padding.get(),
-            self.enable_crc_correction.get(),
-            self.logger.log
+            new_bundle_path = self.bundle_path,
+            png_folder_path = self.folder_path,
+            work_dir = work_dir,
+            enable_padding = self.enable_padding.get(),
+            enable_crc_correction = self.enable_crc_correction.get(),
+            log = self.logger.log
         )
         
         if success:

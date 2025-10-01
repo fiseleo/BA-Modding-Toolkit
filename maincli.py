@@ -76,14 +76,13 @@ def handle_update(args, logger):
     logger.log(f"指定的资源替换类型: {', '.join(asset_types)}")
 
     # 调用核心处理函数
-    # perform_crc=False, enable_padding=False 因为用户要求不包含CRC修正
     success, message = processing.process_mod_update(
         old_mod_path=old_mod_path,
         new_bundle_path=new_bundle_path,
         working_dir=output_dir,
         enable_padding=False,
         log=logger.log,
-        perform_crc=False,
+        perform_crc=not args.no_crc,
         asset_types_to_replace=asset_types
     )
 
@@ -113,13 +112,12 @@ def handle_replace_png(args, logger):
         return
 
     # 调用核心处理函数
-    # perform_crc=False, enable_padding=False 因为用户要求不包含CRC修正
     success, message = processing.process_png_replacement(
         target_bundle_path=bundle_path,
         image_folder=image_folder,
         working_dir=output_dir,
         enable_padding=False,
-        perform_crc=False,
+        perform_crc=not args.no_crc,
         log=logger.log
     )
 
@@ -157,7 +155,8 @@ def main():
     update_parser.add_argument('--old-mod', required=True, help='旧版 Mod bundle 文件的路径。')
     update_parser.add_argument('--new-bundle', help='新版游戏资源 bundle 文件的路径 (如果提供，则优先于 --game-dir)。')
     update_parser.add_argument('--game-dir', help='游戏资源目录的路径，用于自动查找匹配的新版 bundle 文件。')
-    update_parser.add_argument('--output-dir', required=True, help='保存生成的新 Mod 文件的目录。')
+    update_parser.add_argument('--output-dir', default='./output/', help='保存生成的新 Mod 文件的目录 (默认: ./output/)。')
+    update_parser.add_argument('--no-crc', action='store_true', help='禁用 CRC 修正功能。')
     update_parser.add_argument(
         '--asset-types', 
         nargs='+', 
@@ -177,7 +176,8 @@ def main():
     )
     replace_parser.add_argument('--bundle', required=True, help='要修改的目标 bundle 文件路径。')
     replace_parser.add_argument('--image-folder', required=True, help='包含 .png 图片的文件夹路径。图片文件名 (不含扩展名) 需与 bundle 内资源名匹配。')
-    replace_parser.add_argument('--output-dir', required=True, help='保存修改后 bundle 文件的目录。')
+    replace_parser.add_argument('--output-dir', required=False, default='./output/', help='保存修改后 bundle 文件的目录 (默认: ./output/)。')
+    replace_parser.add_argument('--no-crc', action='store_true', help='禁用 CRC 修正功能。')
 
     args = parser.parse_args()
     
