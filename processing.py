@@ -99,6 +99,7 @@ def process_png_replacement(target_bundle_path: Path, image_folder: Path, workin
     """
     从PNG文件夹替换贴图，并根据选项执行CRC修正。
     此函数将生成的文件保存在工作目录中，以便后续进行“覆盖原文件”操作。
+    返回 (是否成功, 状态消息) 的元组。
     """
     try:
         env = load_bundle(target_bundle_path, log)
@@ -306,19 +307,41 @@ def find_new_bundle_path(old_mod_path: Path, game_resource_dir: Path, log):
 
     log(f"正在为 '{old_mod_path.name}' 搜索对应文件...")
 
-    # 1. 通过日期模式确定文件名前缀，且扩展名相同
+    # 1. 通过日期模式确定文件名位置
     date_match = re.search(r'\d{4}-\d{2}-\d{2}', old_mod_path.name)
     if not date_match:
         msg = f"无法在旧文件名 '{old_mod_path.name}' 中找到日期模式 (YYYY-MM-DD)，无法确定用于匹配的文件前缀。"
         log(f"  > 失败: {msg}")
         return None, msg
 
+    # 2. 向前查找可能的日服额外文件名部分
     prefix_end_index = date_match.start()
-    search_prefix = old_mod_path.name[:prefix_end_index]
-    extension = old_mod_path.suffix
-    log(f"  > 已确定文件名前缀: '{search_prefix}，扩展名: '{extension}'...'")
+    
+    # 查找日期模式之前的最后一个连字符分隔的部分
+    # 例如在 "...-textures-YYYY-MM-DD..." 中的 "textures"
+    before_date = old_mod_path.name[:prefix_end_index]
+    
+    # 如果日期模式前有连字符，尝试提取最后一个部分
+    if before_date.endswith('-'):
+        before_date = before_date[:-1]  # 移除末尾的连字符
+    
+    # 分割并获取最后一个部分
+    parts = before_date.split('-')
+    last_part = parts[-1] if parts else ''
+    
+    # 检查最后一个部分是否是日服版额外的资源类型
+    resource_types = ['textures', 'assets', 'textassets', 'materials']
+    
+    if last_part.lower() in resource_types:
+        # 如果找到了资源类型，则前缀不应该包含这个部分
+        search_prefix = before_date.replace(f'-{last_part}', '') + '-'
+    else:
+        search_prefix = old_mod_path.name[:prefix_end_index]
+    
+    log(f"  > 使用前缀: '{search_prefix}'")
+    extension = '.bundle'
 
-    # 2. 查找所有候选文件（前缀相同且扩展名一致）
+    # 3. 查找所有候选文件（前缀相同且扩展名一致）
     candidates = [f for f in game_resource_dir.iterdir() if f.is_file() and f.name.startswith(search_prefix) and f.suffix == extension]
     if not candidates:
         msg = f"在指定目录 '{game_resource_dir}' 中未找到任何匹配的文件。"
@@ -326,7 +349,7 @@ def find_new_bundle_path(old_mod_path: Path, game_resource_dir: Path, log):
         return None, msg
     log(f"  > 找到 {len(candidates)} 个候选文件，正在验证内容...")
 
-    # 3. 加载旧Mod获取贴图列表
+    # 4. 加载旧Mod获取贴图列表
     old_env = load_bundle(old_mod_path, log)
     if not old_env:
         msg = "加载旧版Mod文件失败。"
@@ -341,7 +364,7 @@ def find_new_bundle_path(old_mod_path: Path, game_resource_dir: Path, log):
         return None, msg
     log(f"  > 旧版Mod包含 {len(old_textures_map)} 个贴图资源。")
 
-    # 4. 遍历候选文件，找到第一个包含匹配贴图的
+    # 5. 遍历候选文件，找到第一个包含匹配贴图的
     for candidate_path in candidates:
         log(f"    - 正在检查: {candidate_path.name}")
         try:
@@ -362,10 +385,18 @@ def find_new_bundle_path(old_mod_path: Path, game_resource_dir: Path, log):
     return None, msg
 
 
-def process_mod_update(old_mod_path: Path, new_bundle_path: Path, working_dir: Path, enable_padding: bool, log, perform_crc: bool, asset_types_to_replace: set):
+def process_mod_update(
+    old_mod_path: Path,
+    new_bundle_path: Path,
+    working_dir: Path,
+    enable_padding: bool,
+    log,
+    perform_crc: bool,
+    asset_types_to_replace: set):
     """
     自动化Mod更新流程。
-    此版本直接接收旧版Mod路径和新版资源路径，并且将文件保存在指定的working_dir下。
+    接收旧版Mod路径和新版资源路径，将生成文件保存在指定的working_dir下。
+    返回 (是否成功, 状态消息) 的元组。
     """
     try:
         log(f"  > 使用旧版 Mod: {old_mod_path.name}")
