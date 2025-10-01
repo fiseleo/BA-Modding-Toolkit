@@ -196,10 +196,10 @@ def process_png_replacement(target_bundle_path: Path, image_folder: Path, workin
 def _b2b_replace(old_bundle_path: Path, new_bundle_path: Path, log, asset_types_to_replace: set):
     """
     执行 Bundle-to-Bundle 的核心替换逻辑。
-    首先尝试使用 path_id 进行匹配替换，如果没有任何资源被替换，则回退到使用 (资源名, 资源类型) 进行匹配。
+    按顺序尝试多种匹配策略（path_id, name_type），一旦有策略成功替换了至少一个资源，就停止并返回结果。
     返回一个元组 (modified_env, replacement_count)，如果失败则 modified_env 为 None。
     """
-    # 1. 加载两个 bundles
+    # 1. 加载 bundles
     log(f"正在从旧版 bundle 中提取指定类型的资源: {', '.join(asset_types_to_replace)}")
     old_env = load_bundle(old_bundle_path, log)
     if not old_env:
@@ -210,103 +210,75 @@ def _b2b_replace(old_bundle_path: Path, new_bundle_path: Path, log, asset_types_
     if not new_env:
         return None, 0
 
-    # 辅助函数: 根据不同策略从旧版 bundle 提取资源
-    def extract_old_assets(key_strategy: str):
-        """
-        根据给定的策略从旧版 bundle 中提取资源。
-        返回一个字典，键为资源键，值为资源内容。
-        """
-        assets_map = {}
-        log(f"  > 正在使用 '{key_strategy}' 策略从旧版 bundle 提取资源...")
+    # 定义匹配策略
+    # 每个策略是一个元组: (策略名, 获取资源key的函数)
+    strategies = [
+        (
+            'path_id',  # 根据path_id来匹配
+            lambda obj, data: obj.path_id
+        ),
+        (
+            'name_type', # 根据资源名称和类型来匹配
+            lambda obj, data: (data.m_Name, obj.type.name)
+        )
+    ]
+
+    for name, key_func in strategies:
+        log(f"正在尝试使用 '{name}' 策略进行匹配")
+        
+        # 2. 根据当前策略从旧版 bundle 提取资源
+        old_assets_map = {}
         for obj in old_env.objects:
             if obj.type.name in asset_types_to_replace:
                 data = obj.read()
-                
-                if key_strategy == 'path_id':
-                    asset_key = obj.path_id
-                elif key_strategy == 'name_type':
-                    asset_key = (data.m_Name, obj.type.name)
-                else:
-                    continue
-
-                # 获取资源内容
-                # 对于 Texture2D，只提取出图片数据，保留资源其他属性
+                asset_key = key_func(obj, data)
                 content = data.image if obj.type.name == "Texture2D" else obj.get_raw_data()
-                assets_map[asset_key] = content
+                old_assets_map[asset_key] = content
         
-        if not assets_map:
-            log(f"  > ⚠️ 警告: 使用 '{key_strategy}' 策略未在旧版 bundle 中找到任何指定类型的资源。")
-        else:
-            log(f"  > 提取完成，使用 '{key_strategy}' 策略找到 {len(assets_map)} 个资源。")
-        return assets_map
+        if not old_assets_map:
+            log(f"  > ⚠️ 警告: 使用 '{name}' 策略未在旧版 bundle 中找到任何指定类型的资源。")
+            continue
 
-    # 辅助函数: 执行一轮替换
-    def perform_replacement_pass(assets_map: dict, key_strategy: str):
-        """
-        根据给定的策略执行一轮替换。
-        返回一个元组 (replacement_count, replaced_assets)，
-        其中 replacement_count 为替换的资源数量，replaced_assets 为被替换的资源列表。
-        """
+        log(f"  > 使用 '{name}' 策略从旧版 bundle 提取了 {len(old_assets_map)} 个资源。")
 
-        log(f"正在使用 '{key_strategy}' 策略进行替换扫描")
-        count = 0
-        replaced = []
+        # 3. 根据当前策略执行替换
+        replacement_count = 0
+        replaced_assets_log = []
+        
         for obj in new_env.objects:
             if obj.type.name in asset_types_to_replace:
                 new_data = obj.read()
-                
-                if key_strategy == 'path_id':
-                    asset_key = obj.path_id
-                elif key_strategy == 'name_type':
-                    asset_key = (new_data.m_Name, obj.type.name)
-                else:
-                    log(f"  ❌ 错误: 未知的替换策略 '{key_strategy}'。")
-                    return 0, []
+                asset_key = key_func(obj, new_data)
 
-                if asset_key in assets_map:
-                    old_content = assets_map[asset_key]
+                if asset_key in old_assets_map:
+                    old_content = old_assets_map[asset_key]
                     try:
                         if obj.type.name == "Texture2D":
                             new_data.image = old_content
                             new_data.save()
-                            log(f"  ✅ 成功: 已替换图像 '{new_data.m_Name}' ({new_data.m_TextureFormat.name} 格式)。")
                         else:
                             obj.set_raw_data(old_content)
-                            log(f"  ✅ 成功: 已替换资源 '{new_data.m_Name}' ({obj.type.name} 类型)。")
+                        
+                        replacement_count += 1
+                        log_msg = f"{new_data.m_Name} ({obj.type.name}, key: {asset_key})"
+                        replaced_assets_log.append(log_msg)
+                        log(f"  ✅ 成功替换: {log_msg}")
 
-                        count += 1
-                        # 在日志中明确 key，方便调试
-                        replaced.append(f"{new_data.m_Name} ({obj.type.name}, key: {asset_key})")
                     except Exception as e:
                         log(f"  ❌ 错误: 替换资源 '{new_data.m_Name}' ({obj.type.name}类型)时发生错误: {e}")
-        return count, replaced
 
-    # 4.1 尝试使用 path_id (主要策略)
-    old_assets_map_by_id = extract_old_assets('path_id')
-    replacement_count = 0
-    replaced_assets = []
+        # 4. 如果当前策略成功替换了至少一个资源，就结束
+        if replacement_count > 0:
+            log(f"\n策略 '{name}' 成功替换了 {replacement_count} 个资源:")
+            for item in replaced_assets_log:
+                log(f"  - {item}")
+            return new_env, replacement_count
 
-    if old_assets_map_by_id:
-        replacement_count, replaced_assets = perform_replacement_pass(old_assets_map_by_id, 'path_id')
+        log(f"  > 策略 '{name}' 未能匹配到任何资源。")
 
-    # 4.2: 如果主要策略失败，回退到 name_type
-    if replacement_count == 0:
-        log("\n⚠️ 警告: 使用 path_id 未能匹配到任何资源。正在尝试使用 (资源名, 资源类型) 作为备用策略...")
-        
-        old_assets_map_by_name = extract_old_assets('name_type')
-        if old_assets_map_by_name:
-            replacement_count, replaced_assets = perform_replacement_pass(old_assets_map_by_name, 'name_type')
-
-    # 5. 总结和返回
-    if replacement_count == 0:
-        # 两种策略都失败了，返回失败
-        log(f"⚠️ 警告: 两种匹配策略均未能在新版 bundle 中找到可替换的资源 ({', '.join(asset_types_to_replace)})。")
-        return None, 0
-
-    log(f"\n成功替换了 {replacement_count} 个资源:")
-    for name in replaced_assets:
-        log(f"  - {name}")
-    return new_env, replacement_count
+    # 5. 所有策略都失败了
+    log(f"\n⚠️ 警告: 所有匹配策略均未能在新版 bundle 中找到可替换的资源 ({', '.join(asset_types_to_replace)})。")
+    return None, 0
 
 def process_bundle_to_bundle_replacement(new_bundle_path: Path, old_bundle_path: Path, output_path: Path, log, create_backup_file: bool = True):
     """

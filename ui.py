@@ -315,9 +315,9 @@ class ModUpdateTab(TabFrame):
         success, message = processing.process_mod_update(
             old_mod_path = self.old_mod_path,
             new_bundle_path = self.new_mod_path,
-            work_dir = work_dir,
+            working_dir = work_dir,
             enable_padding = self.enable_padding.get(), 
-            enable_crc_correction = self.enable_crc_correction.get(),
+            perform_crc = self.enable_crc_correction.get(),
             asset_types_to_replace = asset_types_to_replace,
             log = self.logger.log
         )
@@ -463,9 +463,9 @@ class PngReplacementTab(TabFrame):
         success, message = processing.process_png_replacement(
             new_bundle_path = self.bundle_path,
             png_folder_path = self.folder_path,
-            work_dir = work_dir,
+            working_dir = work_dir,
             enable_padding = self.enable_padding.get(),
-            enable_crc_correction = self.enable_crc_correction.get(),
+            perform_crc = self.enable_crc_correction.get(),
             log = self.logger.log
         )
         
