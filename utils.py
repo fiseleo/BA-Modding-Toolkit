@@ -1,12 +1,10 @@
 # utils.py
 
-import tkinter as tk
 import binascii
 
 class CRCUtils:
     """
     一个封装了CRC32计算和修正逻辑的工具类。
-    所有复杂的位运算和GF(2^32)算法都作为私有静态方法实现。
     """
 
     # --- 公开的静态方法 ---
@@ -166,35 +164,71 @@ class CRCUtils:
     def _reverse_byte_bits(byte):
         return int('{:08b}'.format(byte)[::-1], 2)
 
+def get_environment_info():
+    """Collects and formats key environment details."""
+    
+    # --- Attempt to import libraries and get their versions ---
+    # This approach prevents the script from crashing if a library is not installed.
 
-class Logger:
-    def __init__(self, master, log_widget: tk.Text, status_widget: tk.Label):
-        self.master = master
-        self.log_widget = log_widget
-        self.status_widget = status_widget
+    try:
+        import UnityPy
+        unitypy_version = UnityPy.__version__
+    except ImportError:
+        unitypy_version = "Not installed"
+    try:
+        from PIL import Image
+        pillow_version = Image.__version__
+    except ImportError:
+        pillow_version = "Not installed"
+    try:
+        import tkinter
+        tk_version = tkinter.Tcl().eval('info patchlevel')
+    except (ImportError, tkinter.TclError):
+        tk_version = "Not available"
 
-    def log(self, message):
-        """线程安全地向日志区域添加消息"""
-        def _update_log():
-            self.log_widget.config(state=tk.NORMAL)
-            self.log_widget.insert(tk.END, message + "\n")
-            self.log_widget.see(tk.END)
-            self.log_widget.config(state=tk.DISABLED)
-        
-        self.master.after(0, _update_log)
+    import sys
+    import platform
+    import locale
+    from pathlib import Path
 
-    def status(self, message):
-        """线程安全地更新状态栏消息"""
-        def _update_status():
-            self.status_widget.config(text=f"状态：{message}")
-        
-        self.master.after(0, _update_status)
+    def _is_admin():
+        if sys.platform == 'win32':
+            try:
+                import ctypes
+                return ctypes.windll.shell32.IsUserAnAdmin() != 0
+            except (ImportError, AttributeError):
+                return False
+        return False # 在非Windows系统上不是管理员
 
-    def clear(self):
-        """清空日志区域"""
-        def _clear_log():
-            self.log_widget.config(state=tk.NORMAL)
-            self.log_widget.delete('1.0', tk.END)
-            self.log_widget.config(state=tk.DISABLED)
-        
-        self.master.after(0, _clear_log)
+    # --- System Information ---
+    lines = []
+    lines.append("--- System Information ---")
+    lines.append(f"Operating System:  {platform.system()} {platform.release()} ({platform.architecture()[0]})")
+    lines.append(f"System Platform:   {sys.platform}")
+
+    # --- Locale and Encoding Information (crucial for file path/text bugs) ---
+    try:
+        lang_code, encoding = locale.getdefaultlocale()
+        system_locale = f"{lang_code} (Encoding: {encoding})"
+    except (ValueError, TypeError):
+        system_locale = "Could not determine"
+    
+    lines.append(f"System Locale:     {system_locale}")
+    lines.append(f"Filesystem Enc:    {sys.getfilesystemencoding()}")
+    lines.append(f"Preferred Enc:     {locale.getpreferredencoding()}")
+    
+    # --- Python Information ---
+    lines.append("\n--- Python Information ---")
+    lines.append(f"Python Version:    {sys.version.splitlines()[0]}")
+    lines.append(f"Python Executable: {sys.executable}")
+    lines.append(f"Working Directory: {Path.cwd()}")
+    lines.append(f"Running as Admin:  {_is_admin()}")
+
+    # --- Library Versions ---
+    lines.append("\n--- Library Versions ---")
+    lines.append(f"UnityPy Version:   {unitypy_version}")
+    lines.append(f"Pillow Version:    {pillow_version}")
+    lines.append(f"Tkinter Version:   {tk_version}")
+    lines.append("")
+
+    return "\n".join(lines)

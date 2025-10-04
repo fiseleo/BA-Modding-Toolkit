@@ -1,16 +1,16 @@
 # maincli.py
 import argparse
-import os
 import sys
 from pathlib import Path
 import logging
+import shutil
 
 # 将项目根目录添加到 sys.path，以便可以导入 processing 和 utils
 sys.path.append(str(Path(__file__).parent.absolute()))
 
 try:
     import processing
-    from utils import Logger
+    from utils import CRCUtils, get_environment_info
 except ImportError as e:
     print(f"错误: 无法导入必要的模块: {e}")
     print("请确保 'processing.py' 和 'utils.py' 文件与此脚本位于同一目录中。")
@@ -127,7 +127,88 @@ def handle_replace_png(args, logger):
     else:
         logger.log(f"❌ 操作失败: {message}")
 
+def handle_crc(args, logger):
+    """处理 'crc' 命令的逻辑。"""
+    logger.log("--- 开始 CRC 工具 (CLI) ---")
 
+    modified_path = Path(args.modified)
+    if not modified_path.is_file():
+        logger.log(f"❌ 错误: 修改后文件 '{modified_path}' 不存在。")
+        return
+
+    # 确定原始文件路径：优先使用 --original，其次使用 --game-dir 自动查找
+    original_path = None
+    if args.original:
+        original_path = Path(args.original)
+        if not original_path.is_file():
+            logger.log(f"❌ 错误: 手动指定的原始文件 '{original_path}' 不存在。")
+            return
+        logger.log(f"已手动指定原始文件: {original_path.name}")
+    elif args.game_dir:
+        logger.log(f"未提供原始文件，将在 '{args.game_dir}' 中自动搜索...")
+        game_dir = Path(args.game_dir)
+        if not game_dir.is_dir():
+            logger.log(f"❌ 错误: 游戏资源目录 '{game_dir}' 不存在或不是一个目录。")
+            return
+        
+        # 使用与 update 命令相同的查找函数
+        found_path, message = processing.find_new_bundle_path(modified_path, game_dir, logger.log)
+        if not found_path:
+            logger.log(f"❌ 自动搜索失败: {message}")
+            return
+        original_path = found_path
+        # find_new_bundle_path 函数内部会打印成功找到的日志
+
+    # --- 模式 1: 仅检查/计算 CRC ---
+    if args.check_only:
+        logger.status("正在计算CRC...")
+        try:
+            with open(modified_path, "rb") as f: modified_data = f.read()
+            modified_crc_hex = f"{CRCUtils.compute_crc32(modified_data):08X}"
+            logger.log(f"修改后文件 CRC32: {modified_crc_hex}  ({modified_path.name})")
+
+            if original_path:
+                with open(original_path, "rb") as f: original_data = f.read()
+                original_crc_hex = f"{CRCUtils.compute_crc32(original_data):08X}"
+                logger.log(f"原始文件 CRC32:   {original_crc_hex}  ({original_path.name})")
+                if original_crc_hex == modified_crc_hex:
+                    logger.log("✅ CRC值匹配: 是")
+                else:
+                    logger.log("❌ CRC值匹配: 否")
+        except Exception as e:
+            logger.log(f"❌ 计算CRC时发生错误: {e}")
+        return
+
+    # --- 模式 2: 修正 CRC ---
+    if not original_path:
+        logger.log("❌ 错误: 进行CRC修正时，必须提供 '--original' 原始文件或使用 '--game-dir' 进行自动查找。")
+        return
+
+    logger.status("正在进行CRC修正...")
+    try:
+        if CRCUtils.check_crc_match(original_path, modified_path):
+            logger.log("⚠ CRC值已匹配，无需修正。")
+            logger.status("CRC检测完成")
+            return
+
+        logger.log("CRC值不匹配，开始进行CRC修正...")
+        
+        if not args.no_backup:
+            backup_path = modified_path.with_suffix(modified_path.suffix + '.bak')
+            shutil.copy2(modified_path, backup_path)
+            logger.log(f"  > 已创建备份文件: {backup_path.name}")
+
+        success = CRCUtils.manipulate_crc(original_path, modified_path)
+        
+        if success:
+            logger.log("✅ CRC修正成功！修改后的文件已更新。")
+        else:
+            logger.log("❌ CRC修正失败。")
+        logger.status("CRC修正完成")
+
+    except Exception as e:
+        logger.log(f"❌ CRC修正过程中发生错误: {e}")
+        logger.status("CRC修正失败")
 def main():
     """主函数，用于解析命令行参数并分派任务。"""
     parser = argparse.ArgumentParser(
@@ -179,6 +260,45 @@ def main():
     replace_parser.add_argument('--output-dir', required=False, default='./output/', help='保存修改后 bundle 文件的目录 (默认: ./output/)。')
     replace_parser.add_argument('--no-crc', action='store_true', help='禁用 CRC 修正功能。')
 
+    # --- 'crc' 命令 ---
+    crc_parser = subparsers.add_parser(
+        'crc',
+        help='工具，用于修正文件的 CRC32 值或计算/比较 CRC32 值。',
+        formatter_class=argparse.RawTextHelpFormatter,
+        description='''
+示例:
+  # 修正 my_mod.bundle 的 CRC，使其与 original.bundle 匹配 (手动指定)
+  python maincli.py crc --modified "my_mod.bundle" --original "original.bundle"
+
+  # 自动在游戏目录中查找原始文件并修正 CRC
+  python maincli.py crc --modified "my_mod.bundle" --game-dir "C:\\path\\to\\game_data"
+
+  # 仅检查 CRC 是否匹配，不修改文件 (可配合 --game-dir 自动查找)
+  python maincli.py crc --modified "my_mod.bundle" --original "original.bundle" --check-only
+
+  # 计算单个文件的 CRC
+  python maincli.py crc --modified "my_mod.bundle" --check-only
+'''
+    )
+    crc_parser.add_argument('--modified', required=True, help='修改后的文件路径 (待修正或计算)。')
+    crc_parser.add_argument('--original', help='原始文件路径 (用于提供目标 CRC 值)。如果提供，则优先于 --game-dir。')
+    crc_parser.add_argument('--game-dir', help='游戏资源目录的路径，用于自动查找匹配的原始 bundle 文件。')
+    crc_parser.add_argument('--check-only', action='store_true', help='仅计算并比较 CRC，不修改任何文件。')
+    crc_parser.add_argument('--no-backup', action='store_true', help='在修正文件前不创建备份 (.bak)。')
+
+    # --- 'env' 命令 ---
+    env_parser = subparsers.add_parser(
+        'env', 
+        help='显示当前环境的系统信息和库版本。',
+        description='''
+示例:
+  python maincli.py env
+'''
+    )
+
+
+    # ==============================================================
+
     args = parser.parse_args()
     
     # 初始化日志记录器
@@ -189,6 +309,10 @@ def main():
         handle_update(args, logger)
     elif args.command == 'replace-png':
         handle_replace_png(args, logger)
+    elif args.command == 'crc':
+        handle_crc(args, logger)
+    elif args.command == 'env':
+        print(get_environment_info())
 
 if __name__ == "__main__":
     main()

@@ -10,7 +10,48 @@ import os
 
 # 导入自定义模块
 import processing
-from utils import Logger, CRCUtils
+from utils import CRCUtils, get_environment_info
+
+def _is_multiple_files_drop(data: str) -> bool:
+    """
+    检查拖放事件的数据是否包含多个文件路径。
+    多个文件的 event.data 通常是 '{path1} {path2}' 的形式。
+    """
+    return '} {' in data
+
+
+# --- 日志管理类 ---
+class Logger:
+    def __init__(self, master, log_widget: tk.Text, status_widget: tk.Label):
+        self.master = master
+        self.log_widget = log_widget
+        self.status_widget = status_widget
+
+    def log(self, message):
+        """线程安全地向日志区域添加消息"""
+        def _update_log():
+            self.log_widget.config(state=tk.NORMAL)
+            self.log_widget.insert(tk.END, message + "\n")
+            self.log_widget.see(tk.END)
+            self.log_widget.config(state=tk.DISABLED)
+        
+        self.master.after(0, _update_log)
+
+    def status(self, message):
+        """线程安全地更新状态栏消息"""
+        def _update_status():
+            self.status_widget.config(text=f"状态：{message}")
+        
+        self.master.after(0, _update_status)
+
+    def clear(self):
+        """清空日志区域"""
+        def _clear_log():
+            self.log_widget.config(state=tk.NORMAL)
+            self.log_widget.delete('1.0', tk.END)
+            self.log_widget.config(state=tk.DISABLED)
+        
+        self.master.after(0, _clear_log)
 
 # --- 主题与颜色管理 ---
 
@@ -217,6 +258,9 @@ class ModUpdateTab(TabFrame):
 
     # 旧版 Mod 的处理方法，增加自动查找回调
     def drop_old_mod(self, event):
+        if _is_multiple_files_drop(event.data):
+            messagebox.showwarning("操作无效", "请一次只拖放一个文件。")
+            return
         path = Path(event.data.strip('{}'))
         self.set_file_path('old_mod_path', self.old_mod_label, path, "旧版 Mod", self.auto_find_new_bundle)
 
@@ -226,6 +270,9 @@ class ModUpdateTab(TabFrame):
             self.set_file_path('old_mod_path', self.old_mod_label, Path(p), "旧版 Mod", self.auto_find_new_bundle)
 
     def drop_new_mod(self, event):
+        if _is_multiple_files_drop(event.data):
+            messagebox.showwarning("操作无效", "请一次只拖放一个文件。")
+            return
         path = Path(event.data.strip('{}'))
         self.set_new_mod_file(path)
 
@@ -428,12 +475,18 @@ class PngReplacementTab(TabFrame):
         self.replace_button.grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=10)
 
     def drop_bundle(self, event):
+        if _is_multiple_files_drop(event.data):
+            messagebox.showwarning("操作无效", "请一次只拖放一个文件。")
+            return
         self.set_file_path('bundle_path', self.bundle_label, Path(event.data.strip('{}')), "目标 Bundle")
     def browse_bundle(self):
         p = filedialog.askopenfilename(title="选择目标 Bundle 文件")
         if p: self.set_file_path('bundle_path', self.bundle_label, Path(p), "目标 Bundle")
     
     def drop_folder(self, event):
+        if _is_multiple_files_drop(event.data):
+            messagebox.showwarning("操作无效", "请一次只拖放一个文件夹。")
+            return
         self.set_folder_path('folder_path', self.folder_label, Path(event.data.strip('{}')), "PNG 文件夹")
     def browse_folder(self):
         p = filedialog.askdirectory(title="选择 PNG 图片文件夹")
@@ -576,6 +629,9 @@ class CrcToolTab(TabFrame):
         tk.Button(button_frame, text="替换原始文件", command=self.replace_original_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=2, sticky="ew", padx=5)
 
     def drop_original(self, event): 
+        if _is_multiple_files_drop(event.data):
+            messagebox.showwarning("操作无效", "请一次只拖放一个文件。")
+            return
         self.set_original_file(Path(event.data.strip('{}')))
     def browse_original(self):
         p = filedialog.askopenfilename(title="请选择原始文件")
@@ -583,6 +639,9 @@ class CrcToolTab(TabFrame):
             self.set_original_file(Path(p))
     
     def drop_modified(self, event): 
+        if _is_multiple_files_drop(event.data):
+            messagebox.showwarning("操作无效", "请一次只拖放一个文件。")
+            return
         self.set_modified_file(Path(event.data.strip('{}')))
     def browse_modified(self):
         p = filedialog.askopenfilename(title="请选择修改后文件")
@@ -824,9 +883,15 @@ class App(tk.Frame):
         
         backup_checkbox = tk.Checkbutton(global_options_frame, text="创建备份", variable=self.create_backup_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG)
 
+        # Env 按钮
+        environment_button = tk.Button(global_options_frame, text="Env", command=self.show_environment_info, 
+                                      font=Theme.BUTTON_FONT, bg=Theme.BUTTON_WARNING_BG, fg=Theme.BUTTON_FG, 
+                                      relief=tk.FLAT, padx=3, pady=2)
+
         crc_checkbox.pack(side=tk.LEFT, padx=(0, 20))
         self.padding_checkbox.pack(side=tk.LEFT, padx=(0, 20))
-        backup_checkbox.pack(side=tk.LEFT)
+        backup_checkbox.pack(side=tk.LEFT, padx=(0, 20))
+        environment_button.pack(side=tk.LEFT)
         # --- 全局选项结束 ---
         
         # --- 共享设置区域结束 ---
@@ -888,6 +953,10 @@ class App(tk.Frame):
             self.logger.log(f"已在资源管理器中打开目录: {path}")
         except Exception as e:
             messagebox.showerror("错误", f"打开资源管理器时发生错误:\n{e}")
+
+    def show_environment_info(self):
+        """显示环境信息"""
+        self.logger.log(get_environment_info())
 
     def select_game_resource_directory(self):
         self._select_directory(self.game_resource_dir_var, "选择游戏资源目录")
@@ -960,3 +1029,16 @@ class App(tk.Frame):
                                     enable_crc_correction_var=self.enable_crc_correction_var,
                                     create_backup_var=self.create_backup_var)
         self.notebook.add(png_tab, text="PNG 文件夹替换")
+
+if __name__ == "__main__":
+    from tkinterdnd2 import TkinterDnD
+    from ui import App
+
+    # 使用 TkinterDnD.Tk() 作为主窗口以支持拖放
+    root = TkinterDnD.Tk()
+    
+    # 创建并运行应用
+    app = App(root)
+    
+    # 启动 Tkinter 事件循环
+    root.mainloop()

@@ -381,18 +381,15 @@ def find_new_bundle_path(old_mod_path: Path, game_resource_dir: Path, log):
     # 5. 遍历候选文件，找到第一个包含匹配贴图的
     for candidate_path in candidates:
         log(f"    - 正在检查: {candidate_path.name}")
-        try:
-            env = UnityPy.load(str(candidate_path))
-            if not env: continue
-            
-            for obj in env.objects:
-                if obj.type.name == "Texture2D" and obj.read().m_Name in old_textures_map:
-                    msg = f"成功确定新版文件: {candidate_path.name}"
-                    log(f"  ✅ {msg}")
-                    return candidate_path, msg
-        except Exception:
-            log(f"    - 警告: 无法加载候选文件 {candidate_path.name}, 已跳过。")
-            continue
+        
+        env = load_bundle(candidate_path, log)
+        if not env: continue
+        
+        for obj in env.objects:
+            if obj.type.name == "Texture2D" and obj.read().m_Name in old_textures_map:
+                msg = f"成功确定新版文件: {candidate_path.name}"
+                log(f"  ✅ {msg}")
+                return candidate_path, msg
     
     msg = "在所有候选文件中都未找到与旧版Mod贴图名称匹配的资源。无法确定正确的新版文件。"
     log(f"  > 失败: {msg}")
