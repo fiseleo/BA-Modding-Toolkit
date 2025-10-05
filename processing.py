@@ -93,7 +93,7 @@ def save_bundle(env: UnityPy.Environment, output_path: Path, log) -> bool:
         log(traceback.format_exc())
         return False
 
-def process_png_replacement(target_bundle_path: Path, image_folder: Path, working_dir: Path, enable_padding: bool, perform_crc: bool, log):
+def process_png_replacement(target_bundle_path: Path, image_folder: Path, output_dir: Path, enable_padding: bool, perform_crc: bool, log):
     """
     从PNG文件夹替换贴图，并根据选项执行CRC修正。
     此函数将生成的文件保存在工作目录中，以便后续进行“覆盖原文件”操作。
@@ -152,7 +152,7 @@ def process_png_replacement(target_bundle_path: Path, image_folder: Path, workin
             for asset_name, _ in replacement_tasks:
                 log(f"  - {asset_name}")
 
-        final_path = working_dir / target_bundle_path.name
+        final_path = output_dir / target_bundle_path.name
 
         if perform_crc:
             log(f"\n--- 阶段 2: CRC修正 ---")
@@ -399,20 +399,20 @@ def find_new_bundle_path(old_mod_path: Path, game_resource_dir: Path, log):
 def process_mod_update(
     old_mod_path: Path,
     new_bundle_path: Path,
-    working_dir: Path,
+    output_dir: Path,
     enable_padding: bool,
     log,
     perform_crc: bool,
     asset_types_to_replace: set):
     """
     自动化Mod更新流程。
-    接收旧版Mod路径和新版资源路径，将生成文件保存在指定的working_dir下。
+    接收旧版Mod路径和新版资源路径，将生成文件保存在指定的output_dir下。
     返回 (是否成功, 状态消息) 的元组。
     """
     try:
         log(f"  > 使用旧版 Mod: {old_mod_path.name}")
         log(f"  > 使用新版资源: {new_bundle_path.name}")
-        log(f"  > 使用工作目录: {working_dir}")
+        log(f"  > 使用工作目录: {output_dir}")
 
         # --- 1. 执行 B2B 替换 ---
         log("\n--- 阶段 1: Bundle-to-Bundle 替换 ---")
@@ -429,7 +429,7 @@ def process_mod_update(
 
         # --- 2. 根据选项决定是否执行CRC修正 ---
         # 在工作目录下生成文件
-        final_path = working_dir / new_bundle_path.name
+        final_path = output_dir / new_bundle_path.name
 
         if perform_crc:
             log(f"\n--- 阶段 2: CRC修正 ---")

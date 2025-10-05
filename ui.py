@@ -210,7 +210,7 @@ class ModUpdateTab(TabFrame):
 
         # 接收共享的变量
         self.game_resource_dir_var: Path = game_resource_dir_var
-        self.work_dir_var: Path = output_dir_var
+        self.output_dir_var: Path = output_dir_var
 
         # 1. 旧版 Mod 文件
         _, self.old_mod_label = UIComponents.create_file_drop_zone(
@@ -317,7 +317,7 @@ class ModUpdateTab(TabFrame):
             self.logger.status("未找到匹配的目标资源")
 
     def run_update_thread(self):
-        if not all([self.old_mod_path, self.new_mod_path, self.game_resource_dir_var.get(), self.work_dir_var.get()]):
+        if not all([self.old_mod_path, self.new_mod_path, self.game_resource_dir_var.get(), self.output_dir_var.get()]):
             messagebox.showerror("错误", "请确保已分别指定旧版Mod、目标资源 Bundle，并设置了游戏资源目录和输出目录。")
             return
         
@@ -334,15 +334,15 @@ class ModUpdateTab(TabFrame):
         self.final_output_path = None
         self.master.after(0, lambda: self.replace_button.config(state=tk.DISABLED))
 
-        work_dir_base = Path(self.work_dir_var.get())
+        output_dir_base = Path(self.output_dir_var.get())
         # 直接将基础输出目录传递给 processing 函数，它会创建子目录
-        work_dir = work_dir_base 
+        output_dir = output_dir_base 
 
         try:
             # 确保基础输出目录存在
-            work_dir.mkdir(parents=True, exist_ok=True) 
+            output_dir.mkdir(parents=True, exist_ok=True) 
         except Exception as e:
-            messagebox.showerror("错误", f"无法创建输出目录:\n{work_dir}\n\n错误详情: {e}")
+            messagebox.showerror("错误", f"无法创建输出目录:\n{output_dir}\n\n错误详情: {e}")
             return
 
         self.logger.log("\n" + "="*50)
@@ -358,11 +358,11 @@ class ModUpdateTab(TabFrame):
         if self.replace_mesh.get():
             asset_types_to_replace.add("Mesh")
         
-        # 传递 work_dir (基础输出目录) 和资源类型集合
+        # 传递 output_dir (基础输出目录) 和资源类型集合
         success, message = processing.process_mod_update(
             old_mod_path = self.old_mod_path,
             new_bundle_path = self.new_mod_path,
-            working_dir = work_dir,
+            output_dir = output_dir,
             enable_padding = self.enable_padding.get(), 
             perform_crc = self.enable_crc_correction.get(),
             asset_types_to_replace = asset_types_to_replace,
@@ -372,7 +372,7 @@ class ModUpdateTab(TabFrame):
         if success:
             # 成功后，记录最终文件路径并启用按钮
             generated_bundle_filename = self.new_mod_path.name
-            self.final_output_path = work_dir / generated_bundle_filename
+            self.final_output_path = output_dir / generated_bundle_filename
             
             # 检查文件是否存在
             if self.final_output_path.exists():
@@ -382,7 +382,7 @@ class ModUpdateTab(TabFrame):
                 messagebox.showinfo("成功", message)
             else:
                 # 如果文件不存在，但process_mod_update返回成功，仍需显示消息
-                self.logger.log(f"⚠️ 警告: 更新成功，但无法找到生成的 Mod 文件。请在 '{work_dir}' 目录中查找。")
+                self.logger.log(f"⚠️ 警告: 更新成功，但无法找到生成的 Mod 文件。请在 '{output_dir}' 目录中查找。")
                 self.master.after(0, lambda: self.replace_button.config(state=tk.DISABLED)) # 禁用替换按钮，因为路径未知
                 messagebox.showinfo("成功 (路径未知)", message + "\n\n⚠️ 警告：无法自动找到生成的 Mod 文件，请在输出目录中手动查找。")
         else:
@@ -448,7 +448,7 @@ class PngReplacementTab(TabFrame):
         self.final_output_path: Path = None
         
         # 接收共享变量
-        self.work_dir_var = output_dir_var
+        self.output_dir_var = output_dir_var
         self.enable_padding = enable_padding_var
         self.enable_crc_correction = enable_crc_correction_var
         self.create_backup = create_backup_var
@@ -493,7 +493,7 @@ class PngReplacementTab(TabFrame):
         if p: self.set_folder_path('folder_path', self.folder_label, Path(p), "PNG 文件夹")
 
     def run_replacement_thread(self):
-        if not all([self.bundle_path, self.folder_path, self.work_dir_var.get()]):
+        if not all([self.bundle_path, self.folder_path, self.output_dir_var.get()]):
             messagebox.showerror("错误", "请确保已选择目标 Bundle、PNG 文件夹，并在全局设置中指定了输出目录。")
             return
         self.run_in_thread(self.run_replacement)
@@ -502,11 +502,11 @@ class PngReplacementTab(TabFrame):
         self.final_output_path = None
         self.master.after(0, lambda: self.replace_button.config(state=tk.DISABLED))
 
-        work_dir = Path(self.work_dir_var.get())
+        output_dir = Path(self.output_dir_var.get())
         try:
-            work_dir.mkdir(parents=True, exist_ok=True)
+            output_dir.mkdir(parents=True, exist_ok=True)
         except Exception as e:
-            messagebox.showerror("错误", f"无法创建输出目录:\n{work_dir}\n\n错误详情: {e}")
+            messagebox.showerror("错误", f"无法创建输出目录:\n{output_dir}\n\n错误详情: {e}")
             return
 
         self.logger.log("\n" + "="*50)
@@ -516,7 +516,7 @@ class PngReplacementTab(TabFrame):
         success, message = processing.process_png_replacement(
             new_bundle_path = self.bundle_path,
             png_folder_path = self.folder_path,
-            working_dir = work_dir,
+            output_dir = output_dir,
             enable_padding = self.enable_padding.get(),
             perform_crc = self.enable_crc_correction.get(),
             log = self.logger.log
@@ -524,7 +524,7 @@ class PngReplacementTab(TabFrame):
         
         if success:
             generated_bundle_filename = self.bundle_path.name
-            self.final_output_path = work_dir / generated_bundle_filename
+            self.final_output_path = output_dir / generated_bundle_filename
             
             if self.final_output_path.exists():
                 self.logger.log(f"✅ 替换成功。最终文件路径: {self.final_output_path}")
@@ -532,7 +532,7 @@ class PngReplacementTab(TabFrame):
                 self.master.after(0, lambda: self.replace_button.config(state=tk.NORMAL))
                 messagebox.showinfo("成功", message)
             else:
-                self.logger.log(f"⚠️ 警告: 替换成功，但无法找到生成的 Mod 文件。请在 '{work_dir}' 目录中查找。")
+                self.logger.log(f"⚠️ 警告: 替换成功，但无法找到生成的 Mod 文件。请在 '{output_dir}' 目录中查找。")
                 self.master.after(0, lambda: self.replace_button.config(state=tk.DISABLED))
                 messagebox.showinfo("成功 (路径未知)", message + "\n\n⚠️ 警告：无法自动找到生成的文件，请在输出目录中手动查找。")
         else:
@@ -815,6 +815,232 @@ class CrcToolTab(TabFrame):
             messagebox.showerror("错误", f"文件替换过程中发生错误:\n{e}")
 
 
+class BatchModUpdateTab(TabFrame):
+    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var):
+        self.mod_file_list: list[Path] = []
+        
+        # 接收共享变量
+        self.game_resource_dir_var = game_resource_dir_var
+        self.output_dir_var = output_dir_var
+        self.enable_padding = enable_padding_var
+        self.enable_crc_correction = enable_crc_correction_var
+        self.create_backup = create_backup_var
+        self.replace_texture2d = replace_texture2d_var
+        self.replace_textasset = replace_textasset_var
+        self.replace_mesh = replace_mesh_var
+
+        # --- 1. 输入区域 ---
+        input_frame = tk.LabelFrame(self, text="输入 Mod 文件/文件夹", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
+        input_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        # 配置input_frame的网格，让列表框区域(row 1)可以垂直扩展
+        input_frame.rowconfigure(1, weight=1)
+        input_frame.columnconfigure(0, weight=1)
+
+
+        # 拖放区
+        drop_label = tk.Label(input_frame, text="将文件或文件夹拖放到此处\n支持多选文件和文件夹", relief=tk.GROOVE, height=3, bg=Theme.MUTED_BG, fg=Theme.TEXT_NORMAL, font=Theme.INPUT_FONT, justify=tk.LEFT)
+        drop_label.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        drop_label.drop_target_register(DND_FILES)
+        drop_label.dnd_bind('<<Drop>>', self.drop_mods)
+        drop_label.bind('<Configure>', lambda e: e.widget.config(wraplength=e.width - 10))
+
+        # 文件列表显示区
+        list_frame = tk.Frame(input_frame, bg=Theme.FRAME_BG)
+        list_frame.grid(row=1, column=0, sticky="nsew", pady=(5, 10))
+        # 配置list_frame的网格，让Listbox本身(0,0)可以双向扩展
+        list_frame.rowconfigure(0, weight=1)
+        list_frame.columnconfigure(0, weight=1)
+        
+        self.file_listbox = tk.Listbox(list_frame, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, selectmode=tk.EXTENDED)
+        
+        # 创建并配置垂直和水平滚动条
+        v_scrollbar = tk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.file_listbox.yview)
+        h_scrollbar = tk.Scrollbar(list_frame, orient=tk.HORIZONTAL, command=self.file_listbox.xview)
+        self.file_listbox.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+        
+        # 使用grid布局Listbox和滚动条
+        self.file_listbox.grid(row=0, column=0, sticky="nsew")
+        v_scrollbar.grid(row=0, column=1, sticky="ns")
+        h_scrollbar.grid(row=1, column=0, sticky="ew")
+
+        # 按钮区
+        button_frame = tk.Frame(input_frame, bg=Theme.FRAME_BG)
+        button_frame.grid(row=2, column=0, sticky="ew")
+        # 配置按钮区的网格列，使按钮均匀分布
+        button_frame.columnconfigure((0, 1, 2, 3), weight=1)
+
+        tk.Button(button_frame, text="添加文件", command=self.browse_add_files, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT).grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        tk.Button(button_frame, text="添加文件夹", command=self.browse_add_folder, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT).grid(row=0, column=1, sticky="ew", padx=5)
+        tk.Button(button_frame, text="移除选中", command=self.remove_selected_files, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_ACCENT_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT).grid(row=0, column=2, sticky="ew", padx=5)
+        tk.Button(button_frame, text="清空列表", command=self.clear_list, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_WARNING_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT).grid(row=0, column=3, sticky="ew", padx=(5, 0))
+
+        # --- 2. 资源替换类型选项 ---
+        replace_options_frame = tk.LabelFrame(self, text="替换资源类型", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
+        replace_options_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        checkbox_container = tk.Frame(replace_options_frame, bg=Theme.FRAME_BG)
+        checkbox_container.pack(fill=tk.X)
+        
+        tk.Checkbutton(checkbox_container, text="Texture2D", variable=self.replace_texture2d, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
+        tk.Checkbutton(checkbox_container, text="TextAsset", variable=self.replace_textasset, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
+        tk.Checkbutton(checkbox_container, text="Mesh", variable=self.replace_mesh, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT)
+
+        # --- 3. 操作按钮 ---
+        run_button = tk.Button(self, text="开始批量更新", command=self.run_batch_update_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8)
+        run_button.pack(fill=tk.X, pady=10)
+
+    def _add_files_to_list(self, file_paths: list[Path]):
+        """辅助函数，用于向列表和Listbox添加文件，避免重复。"""
+        added_count = 0
+        for path in file_paths:
+            if path not in self.mod_file_list:
+                self.mod_file_list.append(path)
+                # 插入完整路径，但显示时只显示文件名，这样更清晰
+                self.file_listbox.insert(tk.END, f"{path.parent.name} / {path.name}")
+                added_count += 1
+        if added_count > 0:
+            self.logger.log(f"已向处理列表添加 {added_count} 个文件。")
+            self.logger.status(f"当前列表有 {len(self.mod_file_list)} 个文件待处理。")
+
+    def drop_mods(self, event):
+        # TkinterDnD 对多个文件的处理方式是返回一个包含花括号和空格的字符串
+        # e.g., '{path/to/file1} {path/to/file2}'
+        raw_paths = event.data.strip('{}').split('} {')
+        
+        paths_to_add = []
+        for p_str in raw_paths:
+            path = Path(p_str)
+            if path.is_dir():
+                # 如果是文件夹，则查找所有 .bundle 文件
+                paths_to_add.extend(sorted(path.glob('*.bundle')))
+            elif path.is_file():
+                paths_to_add.append(path)
+        
+        if paths_to_add:
+            self._add_files_to_list(paths_to_add)
+
+    def browse_add_files(self):
+        # askopenfilenames 支持多选
+        filepaths = filedialog.askopenfilenames(title="选择一个或多个 Mod Bundle 文件")
+        if filepaths:
+            self._add_files_to_list([Path(p) for p in filepaths])
+
+    def browse_add_folder(self):
+        folder_path = filedialog.askdirectory(title="选择包含 Mod Bundle 文件的文件夹")
+        if folder_path:
+            path = Path(folder_path)
+            bundle_files = sorted(path.glob('*.bundle'))
+            if bundle_files:
+                self._add_files_to_list(bundle_files)
+            else:
+                messagebox.showinfo("提示", "在该文件夹中没有找到任何 .bundle 文件。")
+
+    def remove_selected_files(self):
+        """移除在Listbox中选中的文件。"""
+        selected_indices = self.file_listbox.curselection()
+        if not selected_indices:
+            messagebox.showinfo("提示", "没有选中任何文件。")
+            return
+
+        # 从后往前删除，以避免索引变化导致错误
+        for index in sorted(selected_indices, reverse=True):
+            self.file_listbox.delete(index)
+            del self.mod_file_list[index]
+        
+        removed_count = len(selected_indices)
+        self.logger.log(f"已从处理列表移除 {removed_count} 个文件。")
+        self.logger.status(f"当前列表有 {len(self.mod_file_list)} 个文件待处理。")
+
+    def clear_list(self):
+        self.mod_file_list.clear()
+        self.file_listbox.delete(0, tk.END)
+        self.logger.log("已清空处理列表。")
+        self.logger.status("准备就绪")
+
+    def run_batch_update_thread(self):
+        if not self.mod_file_list:
+            messagebox.showerror("错误", "处理列表为空，请先添加 Mod 文件。")
+            return
+        if not all([self.game_resource_dir_var.get(), self.output_dir_var.get()]):
+            messagebox.showerror("错误", "请确保在全局设置中已指定游戏资源目录和输出目录。")
+            return
+        if not any([self.replace_texture2d.get(), self.replace_textasset.get(), self.replace_mesh.get()]):
+            messagebox.showerror("错误", "请至少选择一种要替换的资源类型（如 Texture2D）。")
+            return
+        
+        self.run_in_thread(self._batch_update_worker)
+
+    def _batch_update_worker(self):
+        self.logger.log("\n" + "#"*50)
+        self.logger.log("🚀 开始批量更新 Mod...")
+        self.logger.status("正在批量处理中...")
+
+        output_dir = Path(self.output_dir_var.get())
+        game_resource_dir = Path(self.game_resource_dir_var.get())
+        
+        try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            messagebox.showerror("错误", f"无法创建输出目录:\n{output_dir}\n\n错误详情: {e}")
+            self.logger.status("处理失败")
+            return
+
+        # 获取一次性设置
+        asset_types_to_replace = {
+            "Texture2D" for _ in range(1) if self.replace_texture2d.get()
+        } | {
+            "TextAsset" for _ in range(1) if self.replace_textasset.get()
+        } | {
+            "Mesh" for _ in range(1) if self.replace_mesh.get()
+        }
+        enable_padding = self.enable_padding.get()
+        perform_crc = self.enable_crc_correction.get()
+
+        total_files = len(self.mod_file_list)
+        success_count = 0
+        fail_count = 0
+
+        for i, old_mod_path in enumerate(self.mod_file_list):
+            self.logger.log("\n" + "="*50)
+            self.logger.log(f"({i+1}/{total_files}) 正在处理: {old_mod_path.name}")
+            self.logger.status(f"正在处理 ({i+1}/{total_files}): {old_mod_path.name}")
+
+            # 1. 查找对应的新版资源文件
+            new_bundle_path, find_message = processing.find_new_bundle_path(
+                old_mod_path, game_resource_dir, self.logger.log
+            )
+
+            if not new_bundle_path:
+                self.logger.log(f"❌ 查找失败: {find_message}")
+                fail_count += 1
+                continue
+
+            # 2. 执行更新
+            success, process_message = processing.process_mod_update(
+                old_mod_path=old_mod_path,
+                new_bundle_path=new_bundle_path,
+                output_dir=output_dir,
+                enable_padding=enable_padding,
+                perform_crc=perform_crc,
+                asset_types_to_replace=asset_types_to_replace,
+                log=self.logger.log
+            )
+
+            if success:
+                self.logger.log(f"✅ 处理成功: {old_mod_path.name}")
+                success_count += 1
+            else:
+                self.logger.log(f"❌ 处理失败: {old_mod_path.name} - {process_message}")
+                fail_count += 1
+        
+        # 批量处理结束
+        summary_message = f"批量处理完成！\n\n总计: {total_files} 个文件\n成功: {success_count} 个\n失败: {fail_count} 个"
+        self.logger.log("\n" + "#"*50)
+        self.logger.log(summary_message)
+        self.logger.log("\n" + "#"*50)
+        self.logger.status("批量处理完成")
+        messagebox.showinfo("批量处理完成", summary_message)
+
 # --- 主应用 ---
 
 class App(tk.Frame):
@@ -1014,6 +1240,18 @@ class App(tk.Frame):
                                   replace_textasset_var=self.replace_textasset_var,
                                   replace_mesh_var=self.replace_mesh_var)
         self.notebook.add(update_tab, text="一键更新 Mod")
+
+        # Tab: 批量更新
+        batch_update_tab = BatchModUpdateTab(self.notebook, self.logger,
+                                             game_resource_dir_var=self.game_resource_dir_var,
+                                             output_dir_var=self.output_dir_var,
+                                             enable_padding_var=self.enable_padding_var,
+                                             enable_crc_correction_var=self.enable_crc_correction_var,
+                                             create_backup_var=self.create_backup_var,
+                                             replace_texture2d_var=self.replace_texture2d_var,
+                                             replace_textasset_var=self.replace_textasset_var,
+                                             replace_mesh_var=self.replace_mesh_var)
+        self.notebook.add(batch_update_tab, text="批量更新 Mod")
 
         # Tab: CRC 工具
         crc_tab = CrcToolTab(self.notebook, self.logger, 

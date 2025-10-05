@@ -79,7 +79,7 @@ def handle_update(args, logger):
     success, message = processing.process_mod_update(
         old_mod_path=old_mod_path,
         new_bundle_path=new_bundle_path,
-        working_dir=output_dir,
+        output_dir=output_dir,
         enable_padding=False,
         log=logger.log,
         perform_crc=not args.no_crc,
@@ -115,7 +115,7 @@ def handle_replace_png(args, logger):
     success, message = processing.process_png_replacement(
         target_bundle_path=bundle_path,
         image_folder=image_folder,
-        working_dir=output_dir,
+        output_dir=output_dir,
         enable_padding=False,
         perform_crc=not args.no_crc,
         log=logger.log
