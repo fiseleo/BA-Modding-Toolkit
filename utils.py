@@ -232,3 +232,7 @@ def get_environment_info():
     lines.append("")
 
     return "\n".join(lines)
+
+def no_log(message):
+    """A dummy logger that does nothing."""
+    pass

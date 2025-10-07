@@ -8,9 +8,12 @@ from PIL import Image
 import shutil
 import re
 
-from utils import CRCUtils
+from utils import CRCUtils, no_log
 
-def load_bundle(bundle_path: Path, log):
+def load_bundle(
+    bundle_path: Path,
+    log = no_log
+):
     """
     尝试加载一个 Unity bundle 文件。
     如果直接加载失败，会尝试移除末尾的几个字节后再次加载。
@@ -55,7 +58,11 @@ def load_bundle(bundle_path: Path, log):
     log(f"❌ 严重错误: 无法以任何方式加载 '{bundle_path.name}'。文件可能已损坏。")
     return None
 
-def create_backup(original_path: Path, log, backup_mode: str = "default") -> bool:
+def create_backup(
+    original_path: Path,
+    log = no_log,
+    backup_mode: str = "default"
+) -> bool:
     """
     创建原始文件的备份
     backup_mode: "default" - 在原文件后缀后添加.bak
@@ -75,7 +82,11 @@ def create_backup(original_path: Path, log, backup_mode: str = "default") -> boo
         log(f"❌ 严重错误: 创建备份文件失败: {e}")
         return False
 
-def save_bundle(env: UnityPy.Environment, output_path: Path, log) -> bool:
+def save_bundle(
+    env: UnityPy.Environment,
+    output_path: Path,
+    log = no_log
+) -> bool:
     """
     将修改后的 Unity bundle 保存到指定路径。
     """
@@ -93,9 +104,17 @@ def save_bundle(env: UnityPy.Environment, output_path: Path, log) -> bool:
         log(traceback.format_exc())
         return False
 
-def process_png_replacement(target_bundle_path: Path, image_folder: Path, output_dir: Path, enable_padding: bool, perform_crc: bool, log):
+def process_png_replacement(
+    target_bundle_path: Path,
+    image_folder: Path,
+    output_dir: Path,
+    perform_crc: bool = True,
+    enable_padding: bool = False,
+    log = no_log
+):
     """
-    从PNG文件夹替换贴图，并根据选项执行CRC修正。
+    从PNG文件夹替换贴图。
+    输入一个包含 PNG 文件的文件夹路径，根据文件名与 bundle 中的资源名称匹配进行替换。
     此函数将生成的文件保存在工作目录中，以便后续进行“覆盖原文件”操作。
     返回 (是否成功, 状态消息) 的元组。
     """
@@ -193,7 +212,12 @@ def process_png_replacement(target_bundle_path: Path, image_folder: Path, output
         log(traceback.format_exc())
         return False, f"处理过程中发生严重错误:\n{e}"
 
-def _b2b_replace(old_bundle_path: Path, new_bundle_path: Path, log, asset_types_to_replace: set):
+def _b2b_replace(
+    old_bundle_path: Path,
+    new_bundle_path: Path,
+    asset_types_to_replace: set = None,
+    log = no_log,
+):
     """
     执行 Bundle-to-Bundle 的核心替换逻辑。
     按顺序尝试多种匹配策略（path_id, name_type），一旦有策略成功替换了至少一个资源，就停止并返回结果。
@@ -280,7 +304,13 @@ def _b2b_replace(old_bundle_path: Path, new_bundle_path: Path, log, asset_types_
     log(f"\n⚠️ 警告: 所有匹配策略均未能在新版 bundle 中找到可替换的资源 ({', '.join(asset_types_to_replace)})。")
     return None, 0
 
-def process_bundle_to_bundle_replacement(new_bundle_path: Path, old_bundle_path: Path, output_path: Path, log, create_backup_file: bool = True):
+def process_bundle_to_bundle_replacement(
+    new_bundle_path: Path, 
+    old_bundle_path: Path, 
+    output_path: Path, 
+    create_backup_file: bool = True,
+    log = no_log
+):
     """
     从旧版Bundle包替换指定资源类型到新版Bundle包。
     """
@@ -290,7 +320,7 @@ def process_bundle_to_bundle_replacement(new_bundle_path: Path, old_bundle_path:
                 return False, "创建备份失败，操作已终止。"
 
         asset_types = {"Texture2D"}
-        modified_env, replacement_count = _b2b_replace(old_bundle_path, new_bundle_path, log, asset_types)
+        modified_env, replacement_count = _b2b_replace(old_bundle_path, new_bundle_path, asset_types, log)
 
         if not modified_env:
             return False, "Bundle-to-Bundle 替换过程失败，请检查日志获取详细信息。"
@@ -312,7 +342,11 @@ def process_bundle_to_bundle_replacement(new_bundle_path: Path, old_bundle_path:
         return False, f"处理过程中发生严重错误:\n{e}"
 
 
-def find_new_bundle_path(old_mod_path: Path, game_resource_dir: Path, log):
+def find_new_bundle_path(
+    old_mod_path: Path,
+    game_resource_dir: Path,
+    log = no_log
+):
     """
     根据旧版Mod文件，在游戏资源目录中智能查找对应的新版文件。
     返回 (找到的路径对象, 状态消息) 的元组。
@@ -400,10 +434,11 @@ def process_mod_update(
     old_mod_path: Path,
     new_bundle_path: Path,
     output_dir: Path,
-    enable_padding: bool,
-    log,
-    perform_crc: bool,
-    asset_types_to_replace: set):
+    asset_types_to_replace: set = None,
+    perform_crc: bool = True,
+    enable_padding: bool = False,
+    log = no_log,
+):
     """
     自动化Mod更新流程。
     接收旧版Mod路径和新版资源路径，将生成文件保存在指定的output_dir下。
@@ -418,7 +453,7 @@ def process_mod_update(
         log("\n--- 阶段 1: Bundle-to-Bundle 替换 ---")
         
         # 将资源类型集合传递给核心函数
-        modified_env, replacement_count = _b2b_replace(old_mod_path, new_bundle_path, log, asset_types_to_replace)
+        modified_env, replacement_count = _b2b_replace(old_mod_path, new_bundle_path, asset_types_to_replace, log)
 
         if not modified_env:
             return False, "Bundle-to-Bundle 替换过程失败，请检查日志获取详细信息。"

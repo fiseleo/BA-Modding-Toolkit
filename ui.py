@@ -514,11 +514,11 @@ class PngReplacementTab(TabFrame):
         self.logger.status("正在处理中，请稍候...")
         
         success, message = processing.process_png_replacement(
-            new_bundle_path = self.bundle_path,
-            png_folder_path = self.folder_path,
+            target_bundle_path = self.bundle_path,
+            image_folder = self.folder_path,
             output_dir = output_dir,
-            enable_padding = self.enable_padding.get(),
             perform_crc = self.enable_crc_correction.get(),
+            enable_padding = self.enable_padding.get(),
             log = self.logger.log
         )
         
@@ -999,6 +999,7 @@ class BatchModUpdateTab(TabFrame):
         total_files = len(self.mod_file_list)
         success_count = 0
         fail_count = 0
+        failed_tasks = []  # 记录失败的任务
 
         for i, old_mod_path in enumerate(self.mod_file_list):
             self.logger.log("\n" + "="*50)
@@ -1013,6 +1014,7 @@ class BatchModUpdateTab(TabFrame):
             if not new_bundle_path:
                 self.logger.log(f"❌ 查找失败: {find_message}")
                 fail_count += 1
+                failed_tasks.append(f"{old_mod_path.name} - 查找失败: {find_message}")
                 continue
 
             # 2. 执行更新
@@ -1032,11 +1034,18 @@ class BatchModUpdateTab(TabFrame):
             else:
                 self.logger.log(f"❌ 处理失败: {old_mod_path.name} - {process_message}")
                 fail_count += 1
+                failed_tasks.append(f"{old_mod_path.name} - {process_message}")
         
         # 批量处理结束
         summary_message = f"批量处理完成！\n\n总计: {total_files} 个文件\n成功: {success_count} 个\n失败: {fail_count} 个"
+        
         self.logger.log("\n" + "#"*50)
         self.logger.log(summary_message)
+        # 如果有失败的任务，在日志中详细列出
+        if failed_tasks:
+            self.logger.log(f"\n\n失败的更新任务:")
+            for task in failed_tasks:
+                self.logger.log(f"- {task}")
         self.logger.log("\n" + "#"*50)
         self.logger.status("批量处理完成")
         messagebox.showinfo("批量处理完成", summary_message)
