@@ -10,7 +10,7 @@ import os
 
 # 导入自定义模块
 import processing
-from utils import CRCUtils, get_environment_info
+from utils import CRCUtils, get_environment_info, no_log
 
 def _is_multiple_files_drop(data: str) -> bool:
     """
@@ -190,6 +190,52 @@ class TabFrame(ttk.Frame):
         label_widget.config(text=f"已选择: {path.name}", fg=Theme.COLOR_SUCCESS)
         self.logger.log(f"已加载 {folder_type_name}: {path.name}")
         self.logger.status(f"已加载 {folder_type_name}")
+
+
+def replace_file(source_path: Path, 
+                    dest_path: Path, 
+                    create_backup: bool = True, 
+                    ask_confirm: bool = True,
+                    confirm_message: str = "",
+                    log = no_log, 
+                ) -> bool: 
+    """ 
+    安全地替换文件，包含确认、备份和日志记录功能。 
+    返回操作是否成功。 
+    """ 
+    if not source_path or not source_path.exists(): 
+        messagebox.showerror("错误", f"源文件不存在:\n{source_path}") 
+        return False 
+    if not dest_path or not dest_path.exists(): 
+        messagebox.showerror("错误", f"目标文件不存在:\n{dest_path}") 
+        return False 
+    if source_path == dest_path: 
+        messagebox.showerror("错误", "源文件和目标文件不能相同！") 
+        return False
+
+    if ask_confirm and not messagebox.askyesno("警告", confirm_message): 
+        return False 
+
+    try: 
+        backup_message = "" 
+        if create_backup: 
+            backup_path = dest_path.with_suffix(dest_path.suffix + '.backup') 
+            log(f"  > 正在备份原始文件到: {backup_path.name}") 
+            shutil.copy2(dest_path, backup_path) 
+            backup_message = f"\n\n原始文件备份至:\n{backup_path.name}" 
+        
+        log(f"  > 正在用 '{source_path.name}' 覆盖 '{dest_path.name}'...") 
+        shutil.copy2(source_path, dest_path) 
+        
+        log("✅ 文件已成功覆盖！") 
+        messagebox.showinfo("成功", f"文件已成功覆盖！{backup_message}") 
+        return True 
+
+    except Exception as e: 
+        log(f"❌ 文件覆盖失败: {e}") 
+
+        messagebox.showerror("错误", f"文件覆盖过程中发生错误:\n{e}") 
+        return False 
 
 
 # --- 具体 Tab 实现 ---
@@ -404,41 +450,18 @@ class ModUpdateTab(TabFrame):
 
     def replace_original(self):
         """执行实际的文件替换操作（在线程中）"""
-        if not messagebox.askyesno("警告", 
-                                   f"此操作将覆盖资源目录中的原始文件:\n\n{self.new_mod_path}\n\n"
-                                   "如果要继续，请确保已备份原始文件，或是在全局设置中开启备份功能。\n\n确定要继续吗？"):
-            return
-
-        self.logger.log("\n" + "="*50)
-        self.logger.log(f"开始覆盖原资源文件 '{self.new_mod_path}'...")
-        self.logger.status("正在覆盖文件...")
-        try:
-            # 目标文件就是目标资源文件
-            target_file = self.new_mod_path
-            # 源文件是刚刚生成的新Mod
-            source_file = self.final_output_path
-            
-            backup_message = ""
-            if self.create_backup.get():
-                backup_path = target_file.with_suffix(target_file.suffix + '.backup')
-                self.logger.log(f"  > 正在备份原始文件到: {backup_path.name}")
-                shutil.copy2(target_file, backup_path)
-                backup_message = f"\n\n原始文件备份至:\n{backup_path.name}"
-            else:
-                self.logger.log("  > 已根据设置跳过创建备份文件。")
-                backup_message = "\n\n(已跳过创建备份)"
-            
-            self.logger.log(f"  > 正在用 '{source_file.name}' 覆盖 '{target_file.name}'...")
-            shutil.copy2(source_file, target_file)
-            
-            self.logger.log("✅ 目标资源文件已成功覆盖！")
-            self.logger.status("文件覆盖完成")
-            messagebox.showinfo("成功", f"目标资源文件已成功覆盖！{backup_message}")
-
-        except Exception as e:
-            self.logger.log(f"❌ 文件覆盖失败: {e}")
-            self.logger.status("文件覆盖失败")
-            messagebox.showerror("错误", f"文件覆盖过程中发生错误:\n{e}")
+        target_file = self.new_mod_path
+        source_file = self.final_output_path
+        
+        success = replace_file(
+            source_path=source_file,
+            dest_path=target_file,
+            create_backup=self.create_backup.get(),
+            ask_confirm=True,
+            confirm_message=f"此操作将覆盖资源目录中的原始文件:\n\n{self.new_mod_path}\n\n"
+                            "如果要继续，请确保已备份原始文件，或是在全局设置中开启备份功能。\n\n确定要继续吗？",
+            log=self.logger.log,
+        )
 
 
 class PngReplacementTab(TabFrame):
@@ -553,39 +576,18 @@ class PngReplacementTab(TabFrame):
 
     def replace_original(self):
         """执行实际的文件替换操作（在线程中）"""
-        if not messagebox.askyesno("警告", 
-                                   f"此操作将覆盖原始文件:\n\n{self.bundle_path.name}\n\n"
-                                   "如果要继续，请确保已备份原始文件，或是在全局设置中开启备份功能。\n\n确定要继续吗？"):
-            return
-
-        self.logger.log("\n" + "="*50)
-        self.logger.log(f"开始覆盖原文件 '{self.bundle_path.name}'...")
-        self.logger.status("正在覆盖文件...")
-        try:
-            target_file = self.bundle_path
-            source_file = self.final_output_path
-            
-            backup_message = ""
-            if self.create_backup.get():
-                backup_path = target_file.with_suffix(target_file.suffix + '.backup')
-                self.logger.log(f"  > 正在备份原始文件到: {backup_path.name}")
-                shutil.copy2(target_file, backup_path)
-                backup_message = f"\n\n原始文件备份至:\n{backup_path.name}"
-            else:
-                self.logger.log("  > 已根据设置跳过创建备份文件。")
-                backup_message = "\n\n(已跳过创建备份)"
-            
-            self.logger.log(f"  > 正在用 '{source_file.name}' 覆盖 '{target_file.name}'...")
-            shutil.copy2(source_file, target_file)
-            
-            self.logger.log("✅ 原始文件已成功覆盖！")
-            self.logger.status("文件覆盖完成")
-            messagebox.showinfo("成功", f"原始文件已成功覆盖！{backup_message}")
-
-        except Exception as e:
-            self.logger.log(f"❌ 文件覆盖失败: {e}")
-            self.logger.status("文件覆盖失败")
-            messagebox.showerror("错误", f"文件覆盖过程中发生错误:\n{e}")
+        target_file = self.bundle_path
+        source_file = self.final_output_path
+        
+        success = replace_file(
+            source_path=source_file,
+            dest_path=target_file,
+            create_backup=self.create_backup.get(),
+            ask_confirm=True,
+            confirm_message=f"此操作将覆盖原始文件:\n\n{self.bundle_path.name}\n\n"
+                            "如果要继续，请确保已备份原始文件，或是在全局设置中开启备份功能。\n\n确定要继续吗？",
+            log=self.logger.log,
+        )
 
 class CrcToolTab(TabFrame):
     def create_widgets(self, game_resource_dir_var, enable_padding_var, create_backup_var):
@@ -791,28 +793,14 @@ class CrcToolTab(TabFrame):
             messagebox.showerror("错误", f"计算CRC时发生错误:\n{e}")
 
     def replace_original(self):
-        if not messagebox.askyesno("警告", "确定要用修改后的文件替换原始文件吗？\n\n此操作不可逆，建议先备份原始文件！"):
-            return
-
-        self.logger.log("\n" + "="*50); self.logger.log("开始替换原始文件...")
-        self.logger.status("正在替换文件...")
-        try:
-            backup_message = ""
-            if self.create_backup.get():
-                backup = self.original_path.with_suffix(self.original_path.suffix + '.backup')
-                shutil.copy2(self.original_path, backup)
-                self.logger.log(f"已创建原始文件备份: {backup.name}")
-                backup_message = f"\n\n原始文件备份: {backup.name}"
-            else:
-                self.logger.log("已根据设置跳过创建备份文件。")
-                backup_message = "\n\n(已跳过创建备份)"
-
-            shutil.copy2(self.modified_path, self.original_path)
-            self.logger.log("✅ 原始文件已成功替换！")
-            messagebox.showinfo("成功", f"原始文件已成功替换！{backup_message}")
-        except Exception as e:
-            self.logger.log(f"❌ 文件替换失败: {e}")
-            messagebox.showerror("错误", f"文件替换过程中发生错误:\n{e}")
+        success = replace_file(
+            source_path=self.modified_path,
+            dest_path=self.original_path,
+            create_backup=self.create_backup.get(),
+            ask_confirm=True,
+            confirm_message="确定要用修改后的文件替换原始文件吗？\n\n此操作不可逆，建议先备份原始文件！",
+            log=self.logger.log,
+        )
 
 
 class BatchModUpdateTab(TabFrame):
@@ -986,13 +974,14 @@ class BatchModUpdateTab(TabFrame):
             return
 
         # 获取一次性设置
-        asset_types_to_replace = {
-            "Texture2D" for _ in range(1) if self.replace_texture2d.get()
-        } | {
-            "TextAsset" for _ in range(1) if self.replace_textasset.get()
-        } | {
-            "Mesh" for _ in range(1) if self.replace_mesh.get()
-        }
+        asset_types_to_replace = set()
+        if self.replace_texture2d.get():
+            asset_types_to_replace.add("Texture2D")
+        if self.replace_textasset.get():
+            asset_types_to_replace.add("TextAsset")
+        if self.replace_mesh.get():
+            asset_types_to_replace.add("Mesh")
+        
         enable_padding = self.enable_padding.get()
         perform_crc = self.enable_crc_correction.get()
 
