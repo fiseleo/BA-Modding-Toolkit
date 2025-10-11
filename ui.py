@@ -241,7 +241,7 @@ def replace_file(source_path: Path,
 # --- 具体 Tab 实现 ---
 
 class ModUpdateTab(TabFrame):
-    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var):
+    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var, replace_all_var):
         self.old_mod_path: Path = None
         self.new_mod_path: Path = None 
         self.final_output_path: Path = None
@@ -253,6 +253,7 @@ class ModUpdateTab(TabFrame):
         self.replace_texture2d: bool = replace_texture2d_var
         self.replace_textasset: bool = replace_textasset_var
         self.replace_mesh: bool = replace_mesh_var
+        self.replace_all: bool = replace_all_var
 
         # 接收共享的变量
         self.game_resource_dir_var: Path = game_resource_dir_var
@@ -286,9 +287,11 @@ class ModUpdateTab(TabFrame):
         checkbox_container = tk.Frame(replace_options_frame, bg=Theme.FRAME_BG)
         checkbox_container.pack(fill=tk.X)
         
+        tk.Checkbutton(checkbox_container, text="ALL", variable=self.replace_all, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT)
         tk.Checkbutton(checkbox_container, text="Texture2D", variable=self.replace_texture2d, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
         tk.Checkbutton(checkbox_container, text="TextAsset", variable=self.replace_textasset, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
-        tk.Checkbutton(checkbox_container, text="Mesh", variable=self.replace_mesh, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT)
+        tk.Checkbutton(checkbox_container, text="Mesh", variable=self.replace_mesh, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
+
         # --- 选项结束 ---
 
         # 操作按钮区域
@@ -368,7 +371,7 @@ class ModUpdateTab(TabFrame):
             return
         
         # 检查是否至少选择了一种资源类型
-        if not any([self.replace_texture2d.get(), self.replace_textasset.get(), self.replace_mesh.get()]):
+        if not any([self.replace_texture2d.get(), self.replace_textasset.get(), self.replace_mesh.get(), self.replace_all.get()]):
             messagebox.showerror("错误", "请至少选择一种要替换的资源类型（如 Texture2D）。")
             return
 
@@ -397,12 +400,17 @@ class ModUpdateTab(TabFrame):
         
         # 构建要替换的资源类型集合
         asset_types_to_replace = set()
-        if self.replace_texture2d.get():
-            asset_types_to_replace.add("Texture2D")
-        if self.replace_textasset.get():
-            asset_types_to_replace.add("TextAsset")
-        if self.replace_mesh.get():
-            asset_types_to_replace.add("Mesh")
+        if self.replace_all.get():
+            # 如果选择了ALL，则替换所有类型的资源
+            asset_types_to_replace = {"ALL"}
+        else:
+            # 否则根据具体选择的类型来设置
+            if self.replace_texture2d.get():
+                asset_types_to_replace.add("Texture2D")
+            if self.replace_textasset.get():
+                asset_types_to_replace.add("TextAsset")
+            if self.replace_mesh.get():
+                asset_types_to_replace.add("Mesh")
         
         # 传递 output_dir (基础输出目录) 和资源类型集合
         success, message = processing.process_mod_update(
@@ -415,24 +423,25 @@ class ModUpdateTab(TabFrame):
             log = self.logger.log
         )
         
-        if success:
-            # 成功后，记录最终文件路径并启用按钮
-            generated_bundle_filename = self.new_mod_path.name
-            self.final_output_path = output_dir / generated_bundle_filename
-            
-            # 检查文件是否存在
-            if self.final_output_path.exists():
-                self.logger.log(f"✅ 更新成功。最终文件路径: {self.final_output_path}")
-                self.logger.log(f"现在可以点击 '覆盖游戏原文件' 按钮来应用 Mod。")
-                self.master.after(0, lambda: self.replace_button.config(state=tk.NORMAL))
-                messagebox.showinfo("成功", message)
-            else:
-                # 如果文件不存在，但process_mod_update返回成功，仍需显示消息
-                self.logger.log(f"⚠️ 警告: 更新成功，但无法找到生成的 Mod 文件。请在 '{output_dir}' 目录中查找。")
-                self.master.after(0, lambda: self.replace_button.config(state=tk.DISABLED)) # 禁用替换按钮，因为路径未知
-                messagebox.showinfo("成功 (路径未知)", message + "\n\n⚠️ 警告：无法自动找到生成的 Mod 文件，请在输出目录中手动查找。")
-        else:
+        if not success:
             messagebox.showerror("失败", message)
+            return
+
+        # 成功后，记录最终文件路径并启用按钮
+        generated_bundle_filename = self.new_mod_path.name
+        self.final_output_path = output_dir / generated_bundle_filename
+        
+        # 检查文件是否存在
+        if self.final_output_path.exists():
+            self.logger.log(f"✅ 更新成功。最终文件路径: {self.final_output_path}")
+            self.logger.log(f"现在可以点击 '覆盖游戏原文件' 按钮来应用 Mod。")
+            self.master.after(0, lambda: self.replace_button.config(state=tk.NORMAL))
+            messagebox.showinfo("成功", message)
+        else:
+            # 如果文件不存在，但process_mod_update返回成功，仍需显示消息
+            self.logger.log(f"⚠️ 警告: 更新成功，但无法找到生成的 Mod 文件。请在 '{output_dir}' 目录中查找。")
+            self.master.after(0, lambda: self.replace_button.config(state=tk.DISABLED)) # 禁用替换按钮，因为路径未知
+            messagebox.showinfo("成功 (路径未知)", message + "\n\n⚠️ 警告：无法自动找到生成的 Mod 文件，请在输出目录中手动查找。")
         
         self.logger.status("处理完成")
 
@@ -804,7 +813,7 @@ class CrcToolTab(TabFrame):
 
 
 class BatchModUpdateTab(TabFrame):
-    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var):
+    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var, replace_all_var):
         self.mod_file_list: list[Path] = []
         
         # 接收共享变量
@@ -816,6 +825,7 @@ class BatchModUpdateTab(TabFrame):
         self.replace_texture2d = replace_texture2d_var
         self.replace_textasset = replace_textasset_var
         self.replace_mesh = replace_mesh_var
+        self.replace_all = replace_all_var
 
         # --- 1. 输入区域 ---
         input_frame = tk.LabelFrame(self, text="输入 Mod 文件/文件夹", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
@@ -869,9 +879,10 @@ class BatchModUpdateTab(TabFrame):
         checkbox_container = tk.Frame(replace_options_frame, bg=Theme.FRAME_BG)
         checkbox_container.pack(fill=tk.X)
         
+        tk.Checkbutton(checkbox_container, text="ALL", variable=self.replace_all, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT)
         tk.Checkbutton(checkbox_container, text="Texture2D", variable=self.replace_texture2d, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
         tk.Checkbutton(checkbox_container, text="TextAsset", variable=self.replace_textasset, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
-        tk.Checkbutton(checkbox_container, text="Mesh", variable=self.replace_mesh, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT)
+        tk.Checkbutton(checkbox_container, text="Mesh", variable=self.replace_mesh, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
 
         # --- 3. 操作按钮 ---
         run_button = tk.Button(self, text="开始批量更新", command=self.run_batch_update_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8)
@@ -952,7 +963,7 @@ class BatchModUpdateTab(TabFrame):
         if not all([self.game_resource_dir_var.get(), self.output_dir_var.get()]):
             messagebox.showerror("错误", "请确保在全局设置中已指定游戏资源目录和输出目录。")
             return
-        if not any([self.replace_texture2d.get(), self.replace_textasset.get(), self.replace_mesh.get()]):
+        if not any([self.replace_texture2d.get(), self.replace_textasset.get(), self.replace_mesh.get(), self.replace_all.get()]):
             messagebox.showerror("错误", "请至少选择一种要替换的资源类型（如 Texture2D）。")
             return
         
@@ -975,12 +986,17 @@ class BatchModUpdateTab(TabFrame):
 
         # 获取一次性设置
         asset_types_to_replace = set()
-        if self.replace_texture2d.get():
-            asset_types_to_replace.add("Texture2D")
-        if self.replace_textasset.get():
-            asset_types_to_replace.add("TextAsset")
-        if self.replace_mesh.get():
-            asset_types_to_replace.add("Mesh")
+        if self.replace_all.get():
+            # 如果选择了ALL，则替换所有类型的资源
+            asset_types_to_replace = {"ALL"}
+        else:
+            # 否则根据具体选择的类型来设置
+            if self.replace_texture2d.get():
+                asset_types_to_replace.add("Texture2D")
+            if self.replace_textasset.get():
+                asset_types_to_replace.add("TextAsset")
+            if self.replace_mesh.get():
+                asset_types_to_replace.add("Mesh")
         
         enable_padding = self.enable_padding.get()
         perform_crc = self.enable_crc_correction.get()
@@ -1070,9 +1086,10 @@ class App(tk.Frame):
         self.create_backup_var = tk.BooleanVar(value=True)
         
         # 一键更新的资源类型选项
-        self.replace_texture2d_var = tk.BooleanVar(value=True) # 默认选中
-        self.replace_textasset_var = tk.BooleanVar(value=False)
-        self.replace_mesh_var = tk.BooleanVar(value=False)
+        self.replace_texture2d_var = tk.BooleanVar(value=True)
+        self.replace_textasset_var = tk.BooleanVar(value=True)
+        self.replace_mesh_var = tk.BooleanVar(value=True)
+        self.replace_all_var = tk.BooleanVar(value=False)
 
     def create_widgets(self):
         main_frame = tk.Frame(self.master, bg=Theme.WINDOW_BG, padx=10, pady=10)
@@ -1236,7 +1253,8 @@ class App(tk.Frame):
                                   create_backup_var=self.create_backup_var,
                                   replace_texture2d_var=self.replace_texture2d_var,
                                   replace_textasset_var=self.replace_textasset_var,
-                                  replace_mesh_var=self.replace_mesh_var)
+                                  replace_mesh_var=self.replace_mesh_var,
+                                  replace_all_var=self.replace_all_var)
         self.notebook.add(update_tab, text="一键更新 Mod")
 
         # Tab: 批量更新
@@ -1248,7 +1266,8 @@ class App(tk.Frame):
                                              create_backup_var=self.create_backup_var,
                                              replace_texture2d_var=self.replace_texture2d_var,
                                              replace_textasset_var=self.replace_textasset_var,
-                                             replace_mesh_var=self.replace_mesh_var)
+                                             replace_mesh_var=self.replace_mesh_var,
+                                             replace_all_var=self.replace_all_var)
         self.notebook.add(batch_update_tab, text="批量更新 Mod")
 
         # Tab: CRC 工具

@@ -215,7 +215,7 @@ def process_png_replacement(
 def _b2b_replace(
     old_bundle_path: Path,
     new_bundle_path: Path,
-    asset_types_to_replace: set = None,
+    asset_types_to_replace: set,
     log = no_log,
 ):
     """
@@ -247,13 +247,14 @@ def _b2b_replace(
         )
     ]
 
+    replace_all = "ALL" in asset_types_to_replace
     for name, key_func in strategies:
         log(f"正在尝试使用 '{name}' 策略进行匹配")
         
         # 2. 根据当前策略从旧版 bundle 提取资源
         old_assets_map = {}
         for obj in old_env.objects:
-            if obj.type.name in asset_types_to_replace:
+            if replace_all or (obj.type.name in asset_types_to_replace):
                 data = obj.read()
                 asset_key = key_func(obj, data)
                 content = data.image if obj.type.name == "Texture2D" else obj.get_raw_data()
@@ -270,7 +271,7 @@ def _b2b_replace(
         replaced_assets_log = []
         
         for obj in new_env.objects:
-            if obj.type.name in asset_types_to_replace:
+            if replace_all or (obj.type.name in asset_types_to_replace):
                 new_data = obj.read()
                 asset_key = key_func(obj, new_data)
 
@@ -284,12 +285,16 @@ def _b2b_replace(
                             obj.set_raw_data(old_content)
                         
                         replacement_count += 1
-                        log_msg = f"{new_data.m_Name} ({obj.type.name}, key: {asset_key})"
+                        # 安全地获取资源名称，避免某些类型没有 m_Name 属性
+                        resource_name = getattr(new_data, 'm_Name', f"<{obj.type.name}资源>")
+                        log_msg = f"{resource_name} ({obj.type.name}, key: {asset_key})"
                         replaced_assets_log.append(log_msg)
                         log(f"  ✅ 成功替换: {log_msg}")
 
                     except Exception as e:
-                        log(f"  ❌ 错误: 替换资源 '{new_data.m_Name}' ({obj.type.name}类型)时发生错误: {e}")
+                        # 安全地获取资源名称，避免某些类型没有 m_Name 属性
+                        resource_name = getattr(new_data, 'm_Name', f"<{obj.type.name}资源>")
+                        log(f"  ❌ 错误: 替换资源 '{resource_name}' ({obj.type.name}类型)时发生错误: {e}")
 
         # 4. 如果当前策略成功替换了至少一个资源，就结束
         if replacement_count > 0:
@@ -434,7 +439,7 @@ def process_mod_update(
     old_mod_path: Path,
     new_bundle_path: Path,
     output_dir: Path,
-    asset_types_to_replace: set = None,
+    asset_types_to_replace: set,
     perform_crc: bool = True,
     enable_padding: bool = False,
     log = no_log,
