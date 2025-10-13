@@ -83,7 +83,8 @@ def handle_update(args, logger):
         enable_padding=False,
         log=logger.log,
         perform_crc=not args.no_crc,
-        asset_types_to_replace=asset_types
+        asset_types_to_replace=asset_types,
+        compression=args.compression
     )
 
     logger.log("\n" + "="*50)
@@ -118,6 +119,7 @@ def handle_replace_asset(args, logger):
         output_dir=output_dir,
         enable_padding=False,
         perform_crc=not args.no_crc,
+        compression=args.compression,
         log=logger.log
     )
 
@@ -241,9 +243,15 @@ def main():
     update_parser.add_argument(
         '--asset-types', 
         nargs='+', 
-        default=['Texture2D'], 
-        choices=['Texture2D', 'TextAsset', 'Mesh'],
-        help='要替换的资源类型列表 (默认为: Texture2D)。'
+        default=['Texture2D', 'TextAsset', 'Mesh'], 
+        choices=['Texture2D', 'TextAsset', 'Mesh', 'ALL'],
+        help='要替换的资源类型列表。可选: Texture2D, TextAsset, Mesh, ALL。'
+    )
+    update_parser.add_argument(
+        '--compression', 
+        default='lzma', 
+        choices=['lzma', 'lz4', 'original', 'none'],
+        help='Bundle 文件的压缩方式 (默认: lzma)。可选: lzma, lz4, original(保持原始), none(不压缩)。'
     )
 
     # --- 'replace-asset' 命令 ---
@@ -259,6 +267,12 @@ def main():
     replace_parser.add_argument('--folder', required=True, help='包含资源文件的文件夹路径。资源文件名 (不含扩展名) 需与 bundle 内资源名匹配。')
     replace_parser.add_argument('--output-dir', required=False, default='./output/', help='保存修改后 bundle 文件的目录 (默认: ./output/)。')
     replace_parser.add_argument('--no-crc', action='store_true', help='禁用 CRC 修正功能。')
+    replace_parser.add_argument(
+        '--compression', 
+        default='lzma', 
+        choices=['lzma', 'lz4', 'original', 'none'],
+        help='Bundle 文件的压缩方式 (默认: lzma)。可选: lzma, lz4, original(保持原始), none(不压缩)。'
+    )
 
     # --- 'crc' 命令 ---
     crc_parser = subparsers.add_parser(

@@ -241,13 +241,14 @@ def replace_file(source_path: Path,
 # --- 具体 Tab 实现 ---
 
 class ModUpdateTab(TabFrame):
-    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var, replace_all_var):
+    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var, replace_all_var, compression_method_var):
         self.old_mod_path: Path = None
         self.new_mod_path: Path = None 
         self.final_output_path: Path = None
         self.enable_padding: bool = enable_padding_var
         self.enable_crc_correction: bool = enable_crc_correction_var
         self.create_backup: bool = create_backup_var
+        self.compression_method = compression_method_var
         
         # 接收新的资源类型变量
         self.replace_texture2d: bool = replace_texture2d_var
@@ -420,6 +421,7 @@ class ModUpdateTab(TabFrame):
             enable_padding = self.enable_padding.get(), 
             perform_crc = self.enable_crc_correction.get(),
             asset_types_to_replace = asset_types_to_replace,
+            compression = self.compression_method.get(),
             log = self.logger.log
         )
         
@@ -474,7 +476,7 @@ class ModUpdateTab(TabFrame):
 
 
 class AssetReplacementTab(TabFrame):
-    def create_widgets(self, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var):
+    def create_widgets(self, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, compression_method_var):
         self.bundle_path: Path = None
         self.folder_path: Path = None
         self.final_output_path: Path = None
@@ -484,6 +486,7 @@ class AssetReplacementTab(TabFrame):
         self.enable_padding = enable_padding_var
         self.enable_crc_correction = enable_crc_correction_var
         self.create_backup = create_backup_var
+        self.compression_method = compression_method_var
 
         # 1. 资源文件夹
         _, self.folder_label = UIComponents.create_folder_drop_zone(
@@ -560,6 +563,7 @@ class AssetReplacementTab(TabFrame):
             output_dir = output_dir,
             perform_crc = self.enable_crc_correction.get(),
             enable_padding = self.enable_padding.get(),
+            compression = self.compression_method.get(),
             log = self.logger.log
         )
         
@@ -822,7 +826,7 @@ class CrcToolTab(TabFrame):
 
 
 class BatchModUpdateTab(TabFrame):
-    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var, replace_all_var):
+    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var, replace_all_var, compression_method_var):
         self.mod_file_list: list[Path] = []
         
         # 接收共享变量
@@ -835,6 +839,7 @@ class BatchModUpdateTab(TabFrame):
         self.replace_textasset = replace_textasset_var
         self.replace_mesh = replace_mesh_var
         self.replace_all = replace_all_var
+        self.compression_method = compression_method_var
 
         # --- 1. 输入区域 ---
         input_frame = tk.LabelFrame(self, text="输入 Mod 文件/文件夹", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
@@ -1009,6 +1014,7 @@ class BatchModUpdateTab(TabFrame):
         
         enable_padding = self.enable_padding.get()
         perform_crc = self.enable_crc_correction.get()
+        compression_method = self.compression_method.get()
 
         total_files = len(self.mod_file_list)
         success_count = 0
@@ -1039,6 +1045,7 @@ class BatchModUpdateTab(TabFrame):
                 enable_padding=enable_padding,
                 perform_crc=perform_crc,
                 asset_types_to_replace=asset_types_to_replace,
+                compression=compression_method,
                 log=self.logger.log
             )
 
@@ -1093,6 +1100,7 @@ class App(tk.Frame):
         self.enable_padding_var = tk.BooleanVar(value=False)
         self.enable_crc_correction_var = tk.BooleanVar(value=True)
         self.create_backup_var = tk.BooleanVar(value=True)
+        self.compression_method_var = tk.StringVar(value="lzma")
         
         # 一键更新的资源类型选项
         self.replace_texture2d_var = tk.BooleanVar(value=True)
@@ -1138,9 +1146,17 @@ class App(tk.Frame):
                                       font=Theme.BUTTON_FONT, bg=Theme.BUTTON_WARNING_BG, fg=Theme.BUTTON_FG, 
                                       relief=tk.FLAT, padx=3, pady=2)
 
+        # 压缩方式下拉框
+        compression_label = tk.Label(global_options_frame, text="压缩方式:", font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL)
+        compression_combo = ttk.Combobox(global_options_frame, textvariable=self.compression_method_var, 
+                                         values=["lzma", "lz4", "original", "none"], 
+                                         state="readonly", font=Theme.INPUT_FONT, width=10)
+
         crc_checkbox.pack(side=tk.LEFT, padx=(0, 20))
         self.padding_checkbox.pack(side=tk.LEFT, padx=(0, 20))
         backup_checkbox.pack(side=tk.LEFT, padx=(0, 20))
+        compression_label.pack(side=tk.LEFT)
+        compression_combo.pack(side=tk.LEFT, padx=(5, 20))
         environment_button.pack(side=tk.LEFT)
         # --- 全局选项结束 ---
         
@@ -1263,7 +1279,8 @@ class App(tk.Frame):
                                   replace_texture2d_var=self.replace_texture2d_var,
                                   replace_textasset_var=self.replace_textasset_var,
                                   replace_mesh_var=self.replace_mesh_var,
-                                  replace_all_var=self.replace_all_var)
+                                  replace_all_var=self.replace_all_var,
+                                  compression_method_var=self.compression_method_var)
         self.notebook.add(update_tab, text="一键更新 Mod")
 
         # Tab: 批量更新
@@ -1276,7 +1293,8 @@ class App(tk.Frame):
                                              replace_texture2d_var=self.replace_texture2d_var,
                                              replace_textasset_var=self.replace_textasset_var,
                                              replace_mesh_var=self.replace_mesh_var,
-                                             replace_all_var=self.replace_all_var)
+                                             replace_all_var=self.replace_all_var,
+                                             compression_method_var=self.compression_method_var)
         self.notebook.add(batch_update_tab, text="批量更新 Mod")
 
         # Tab: CRC 工具
@@ -1291,7 +1309,8 @@ class App(tk.Frame):
                                     output_dir_var=self.output_dir_var,
                                     enable_padding_var=self.enable_padding_var,
                                     enable_crc_correction_var=self.enable_crc_correction_var,
-                                    create_backup_var=self.create_backup_var)
+                                    create_backup_var=self.create_backup_var,
+                                    compression_method_var=self.compression_method_var)
         self.notebook.add(asset_tab, text="资源文件夹替换")
 
 if __name__ == "__main__":
