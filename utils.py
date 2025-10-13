@@ -1,6 +1,13 @@
 # utils.py
 
 import binascii
+import os
+import re
+from pathlib import Path
+
+def no_log(message):
+    """A dummy logger that does nothing."""
+    pass
 
 class CRCUtils:
     """
@@ -17,14 +24,14 @@ class CRCUtils:
         return binascii.crc32(data) & 0xFFFFFFFF
 
     @staticmethod
-    def check_crc_match(original_path: str, modified_path: str) -> bool:
+    def check_crc_match(original_path: Path, modified_path: Path) -> bool:
         """
         检测两个文件的CRC值是否匹配。
         返回True表示CRC值一致，False表示不一致。
         """
-        with open(original_path, "rb") as f:
+        with open(str(original_path), "rb") as f:
             original_data = f.read()
-        with open(modified_path, "rb") as f:
+        with open(str(modified_path), "rb") as f:
             modified_data = f.read()
 
         original_crc = CRCUtils.compute_crc32(original_data)
@@ -32,14 +39,14 @@ class CRCUtils:
         
         return original_crc == modified_crc
     @staticmethod
-    def manipulate_crc(original_path: str, modified_path: str, enable_padding: bool = False) -> bool:
+    def manipulate_crc(original_path: Path, modified_path: Path, enable_padding: bool = False) -> bool:
         """
         修正修改后文件的CRC，使其与原始文件匹配。
         此方法处理文件的读写操作。
         """
-        with open(original_path, "rb") as f:
+        with open(str(original_path), "rb") as f:
             original_data = f.read()
-        with open(modified_path, "rb") as f:
+        with open(str(modified_path), "rb") as f:
             modified_data = f.read()
 
         original_crc = CRCUtils.compute_crc32(original_data)
@@ -233,6 +240,37 @@ def get_environment_info():
 
     return "\n".join(lines)
 
-def no_log(message):
-    """A dummy logger that does nothing."""
-    pass
+def get_skel_version(filepath: Path, log = no_log) -> str | None:
+    """
+    通过扫描文件头部来查找Spine版本号。
+
+    Args:
+        filepath: .skel 文件的路径。
+
+    Returns:
+        一个字符串，表示Spine的版本号，例如 "4.2.33"。
+        如果未找到，则返回 None。
+    """
+    if not filepath.exists():
+        log(f"错误: 文件不存在 -> {filepath}")
+        return None
+
+    try:
+        with open(str(filepath), 'rb') as f:
+            # 读取文件的前256个字节。版本号几乎总是在这个范围内。
+            header_chunk = f.read(256)
+            header_text = header_chunk.decode('utf-8', errors='ignore')
+
+            # 使用正则表达式查找 "数字.数字.数字" 格式的字符串。
+            match = re.search(r'(\d{1,2}\.\d{1,2}\.\d{1,2})', header_text)
+            
+            if match:
+                version_string = match.group(1)
+                return version_string
+            else:
+                log(f"未能在文件头部找到Spine版本号模式 -> {filepath}")
+                return None
+
+    except Exception as e:
+        log(f"处理文件时发生错误: {e}")
+        return None

@@ -60,8 +60,8 @@ def load_bundle(
 
 def create_backup(
     original_path: Path,
-    log = no_log,
-    backup_mode: str = "default"
+    backup_mode: str = "default",
+    log = no_log
 ) -> bool:
     """
     创建原始文件的备份
@@ -85,18 +85,34 @@ def create_backup(
 def save_bundle(
     env: UnityPy.Environment,
     output_path: Path,
-    log = no_log
+    compression: str = "lzma",
+    log=no_log
 ) -> bool:
     """
     将修改后的 Unity bundle 保存到指定路径。
+    compression: 用于控制压缩方式。
+                 - "lzma": (默认) 使用 LZMA 压缩。
+                 - "lz4": 使用 LZ4 压缩。
+                 - "original": 保留原始压缩方式。
+                 - "none": 不进行压缩。
     """
     try:
         log(f"\n正在将修改后的 bundle 保存到: {output_path.name}")
-        log("压缩方式: LZMA (这可能需要一些时间...)")
-        
+
+        save_kwargs = {}
+        if compression == "original":
+            log("压缩方式: 保持原始设置")
+            # Not passing the 'packer' argument preserves the original compression.
+        elif compression == "none":
+            log("压缩方式: 不压缩")
+            save_kwargs['packer'] = ""  # An empty string typically means no compression.
+        else:
+            log(f"压缩方式: {compression.upper()}")
+            save_kwargs['packer'] = compression
+
         with open(output_path, "wb") as f:
-            f.write(env.file.save(packer="lzma"))
-        
+            f.write(env.file.save(**save_kwargs))
+
         log(f"✅ Bundle 文件已成功保存到: {output_path}")
         return True
     except Exception as e:
@@ -110,6 +126,7 @@ def process_asset_replacement(
     output_dir: Path,
     perform_crc: bool = True,
     enable_padding: bool = False,
+    compression: str = "lzma",
     log = no_log
 ):
     """
@@ -212,37 +229,37 @@ def process_asset_replacement(
             for asset_name, file_path in unmatched_tasks:
                 log(f"  - {Path(file_path).name} (尝试匹配: '{asset_name}')")
 
-        final_path = output_dir / target_bundle_path.name
+        output_path = output_dir / target_bundle_path.name
 
         if perform_crc:
             log(f"\n--- 阶段 2: CRC修正 ---")
             log(f"  > 准备直接保存并修正CRC...")
             
-            if not save_bundle(env, final_path, log):
+            if not save_bundle(env, output_path, compression, log):
                 return False, "保存文件失败，操作已终止。"
             
             log(f"  > 原始文件 (用于CRC校验): {target_bundle_path}")
-            log(f"  > 待修正文件: {final_path}")
+            log(f"  > 待修正文件: {output_path}")
             
-            is_crc_success = CRCUtils.manipulate_crc(target_bundle_path, final_path, enable_padding)
+            is_crc_success = CRCUtils.manipulate_crc(target_bundle_path, output_path, enable_padding)
 
             if not is_crc_success:
-                if final_path.exists():
+                if output_path.exists():
                     try:
-                        final_path.unlink()
-                        log(f"  > 已删除失败的CRC修正文件: {final_path}")
+                        output_path.unlink()
+                        log(f"  > 已删除失败的CRC修正文件: {output_path}")
                     except OSError as e:
                         log(f"  > 警告: 清理失败的CRC修正文件时出错: {e}")
-                return False, f"CRC 修正失败。最终文件 '{final_path}' 未能生成。"
+                return False, f"CRC 修正失败。最终文件 '{output_path}' 未能生成。"
             
             log("✅ CRC 修正成功！")
         else:
             log(f"\n--- 阶段 2: 保存最终文件 ---")
             log(f"  > 准备直接保存最终文件...")
-            if not save_bundle(env, final_path, log):
+            if not save_bundle(env, output_path, compression, log):
                 return False, "保存最终文件失败，操作已终止。"
 
-        log(f"最终文件已保存至: {final_path}")
+        log(f"最终文件已保存至: {output_path}")
         log(f"\n🎉 处理完成！")
         return True, f"处理完成！\n成功替换 {replacement_count} 个资源。\n\n文件已保存至工作目录，现在可以点击“覆盖原文件”按钮应用更改。"
 
@@ -353,6 +370,7 @@ def process_bundle_to_bundle_replacement(
     old_bundle_path: Path, 
     output_path: Path, 
     create_backup_file: bool = True,
+    compression: str = "lzma",
     log = no_log
 ):
     """
@@ -374,7 +392,7 @@ def process_bundle_to_bundle_replacement(
             log("请确认新旧两个bundle包中确实存在同名的贴图资源。")
             return False, "没有找到任何名称匹配的 Texture2D 资源进行替换。"
 
-        if save_bundle(modified_env, output_path, log):
+        if save_bundle(modified_env, output_path, compression, log):
             log("\n🎉 处理完成！")
             return True, f"处理完成！\n成功恢复/替换了 {replacement_count} 个资源。\n\n文件已保存至:\n{output_path}"
         else:
@@ -481,6 +499,7 @@ def process_mod_update(
     asset_types_to_replace: set,
     perform_crc: bool = True,
     enable_padding: bool = False,
+    compression: str = "lzma",
     log = no_log,
 ):
     """
@@ -489,6 +508,7 @@ def process_mod_update(
     返回 (是否成功, 状态消息) 的元组。
     """
     try:
+        log("="*50)
         log(f"  > 使用旧版 Mod: {old_mod_path.name}")
         log(f"  > 使用新版资源: {new_bundle_path.name}")
         log(f"  > 使用工作目录: {output_dir}")
@@ -508,38 +528,38 @@ def process_mod_update(
 
         # --- 2. 根据选项决定是否执行CRC修正 ---
         # 在工作目录下生成文件
-        final_path = output_dir / new_bundle_path.name
+        output_path = output_dir / new_bundle_path.name
 
         if perform_crc:
             log(f"\n--- 阶段 2: CRC修正 ---")
             # 先保存未修正CRC的文件到最终路径
-            if not save_bundle(modified_env, final_path, log):
+            if not save_bundle(modified_env, output_path, compression, log):
                 return False, "保存文件失败，操作已终止。"
             
             log(f"  > 原始文件 (用于CRC校验): {new_bundle_path}")
-            log(f"  > 待修正文件: {final_path}")
+            log(f"  > 待修正文件: {output_path}")
             
             # 直接对最终文件进行CRC修正
-            is_crc_success = CRCUtils.manipulate_crc(new_bundle_path, final_path, enable_padding)
+            is_crc_success = CRCUtils.manipulate_crc(new_bundle_path, output_path, enable_padding)
 
             if not is_crc_success:
-                if final_path.exists():
+                if output_path.exists():
                     try:
-                        final_path.unlink()
-                        log(f"  > 已删除失败的CRC修正文件: {final_path}")
+                        output_path.unlink()
+                        log(f"  > 已删除失败的CRC修正文件: {output_path}")
                     except OSError as e:
                         log(f"  > 警告: 清理失败的CRC修正文件时出错: {e}")
-                return False, f"CRC 修正失败。最终文件 '{final_path.name}' 未能生成。"
+                return False, f"CRC 修正失败。最终文件 '{output_path.name}' 未能生成。"
             
             log("✅ CRC 修正成功！")
 
         else:
             log(f"\n--- 阶段 2: 保存最终文件 ---")
             log(f"  > 准备直接保存最终文件...")
-            if not save_bundle(modified_env, final_path, log):
+            if not save_bundle(modified_env, output_path, compression, log):
                 return False, "保存最终文件失败，操作已终止。"
 
-        log(f"最终文件已保存至: {final_path}")
+        log(f"最终文件已保存至: {output_path}")
         log(f"\n🎉 全部流程处理完成！")
         return True, "一键更新成功！"
 
