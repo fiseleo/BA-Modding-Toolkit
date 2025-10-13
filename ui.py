@@ -473,7 +473,7 @@ class ModUpdateTab(TabFrame):
         )
 
 
-class PngReplacementTab(TabFrame):
+class AssetReplacementTab(TabFrame):
     def create_widgets(self, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var):
         self.bundle_path: Path = None
         self.folder_path: Path = None
@@ -485,9 +485,9 @@ class PngReplacementTab(TabFrame):
         self.enable_crc_correction = enable_crc_correction_var
         self.create_backup = create_backup_var
 
-        # 1. PNG 图片文件夹
+        # 1. 资源文件夹
         _, self.folder_label = UIComponents.create_folder_drop_zone(
-            self, "PNG 图片文件夹", self.drop_folder, self.browse_folder
+            self, "替换资源文件夹", self.drop_folder, self.browse_folder
         )
 
         # 2. 目标 Bundle 文件
@@ -519,14 +519,23 @@ class PngReplacementTab(TabFrame):
         if _is_multiple_files_drop(event.data):
             messagebox.showwarning("操作无效", "请一次只拖放一个文件夹。")
             return
-        self.set_folder_path('folder_path', self.folder_label, Path(event.data.strip('{}')), "PNG 文件夹")
+        
+        # 获取拖放的文件路径并转换为Path对象
+        dropped_path = Path(event.data.strip('{}'))
+        
+        # 检查是否是文件夹
+        if not dropped_path.is_dir():
+            messagebox.showwarning("操作无效", "请输入包含了要替换文件的文件夹。")
+            return
+            
+        self.set_folder_path('folder_path', self.folder_label, dropped_path, "替换资源文件夹")
     def browse_folder(self):
-        p = filedialog.askdirectory(title="选择 PNG 图片文件夹")
-        if p: self.set_folder_path('folder_path', self.folder_label, Path(p), "PNG 文件夹")
+        p = filedialog.askdirectory(title="选择替换资源文件夹")
+        if p: self.set_folder_path('folder_path', self.folder_label, Path(p), "替换资源文件夹")
 
     def run_replacement_thread(self):
         if not all([self.bundle_path, self.folder_path, self.output_dir_var.get()]):
-            messagebox.showerror("错误", "请确保已选择目标 Bundle、PNG 文件夹，并在全局设置中指定了输出目录。")
+            messagebox.showerror("错误", "请确保已选择目标 Bundle、替换资源文件夹，并在全局设置中指定了输出目录。")
             return
         self.run_in_thread(self.run_replacement)
 
@@ -542,12 +551,12 @@ class PngReplacementTab(TabFrame):
             return
 
         self.logger.log("\n" + "="*50)
-        self.logger.log("开始从 PNG 文件夹替换...")
+        self.logger.log("开始从资源文件夹替换...")
         self.logger.status("正在处理中，请稍候...")
         
-        success, message = processing.process_png_replacement(
+        success, message = processing.process_asset_replacement(
             target_bundle_path = self.bundle_path,
-            image_folder = self.folder_path,
+            asset_folder = self.folder_path,
             output_dir = output_dir,
             perform_crc = self.enable_crc_correction.get(),
             enable_padding = self.enable_padding.get(),
@@ -1277,13 +1286,13 @@ class App(tk.Frame):
                              create_backup_var=self.create_backup_var)
         self.notebook.add(crc_tab, text="CRC 修正工具")
 
-        # Tab: PNG 替换
-        png_tab = PngReplacementTab(self.notebook, self.logger, 
+        # Tab: 资源文件夹替换
+        asset_tab = AssetReplacementTab(self.notebook, self.logger, 
                                     output_dir_var=self.output_dir_var,
                                     enable_padding_var=self.enable_padding_var,
                                     enable_crc_correction_var=self.enable_crc_correction_var,
                                     create_backup_var=self.create_backup_var)
-        self.notebook.add(png_tab, text="PNG 文件夹替换")
+        self.notebook.add(asset_tab, text="资源文件夹替换")
 
 if __name__ == "__main__":
     from tkinterdnd2 import TkinterDnD

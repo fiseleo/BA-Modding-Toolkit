@@ -93,12 +93,12 @@ def handle_update(args, logger):
         logger.log(f"❌ 操作失败: {message}")
 
 
-def handle_replace_png(args, logger):
-    """处理 'replace-png' 命令的逻辑。"""
-    logger.log("--- 开始 PNG 替换 (CLI) ---")
+def handle_replace_asset(args, logger):
+    """处理 'replace-asset' 命令的逻辑。"""
+    logger.log("--- 开始资源替换 (CLI) ---")
     
     bundle_path = Path(args.bundle)
-    image_folder = Path(args.image_folder)
+    asset_folder = Path(args.asset_folder)
     output_dir = Path(args.output_dir)
 
     # 确保输出目录存在
@@ -107,14 +107,14 @@ def handle_replace_png(args, logger):
     if not bundle_path.is_file():
         logger.log(f"❌ 错误: Bundle 文件 '{bundle_path}' 不存在。")
         return
-    if not image_folder.is_dir():
-        logger.log(f"❌ 错误: 图片文件夹 '{image_folder}' 不存在。")
+    if not asset_folder.is_dir():
+        logger.log(f"❌ 错误: 资源文件夹 '{asset_folder}' 不存在。")
         return
 
     # 调用核心处理函数
-    success, message = processing.process_png_replacement(
+    success, message = processing.process_asset_replacement(
         target_bundle_path=bundle_path,
-        image_folder=image_folder,
+        asset_folder=asset_folder,
         output_dir=output_dir,
         enable_padding=False,
         perform_crc=not args.no_crc,
@@ -246,17 +246,17 @@ def main():
         help='要替换的资源类型列表 (默认为: Texture2D)。'
     )
 
-    # --- 'replace-png' 命令 ---
+    # --- 'replace-asset' 命令 ---
     replace_parser = subparsers.add_parser(
-        'replace-png', 
-        help='将 PNG 图片文件夹中的内容替换到目标 bundle 文件中。',
+        'replace-asset', 
+        help='将资源文件夹中的内容替换到目标 bundle 文件中。',
         description='''
 示例:
-  python maincli.py replace-png --bundle "C:\\path\\to\\target.bundle" --image-folder "C:\\path\\to\\images" --output-dir "C:\\path\\to\\output"
+  python maincli.py replace-asset --bundle "C:\\path\\to\\target.bundle" --folder "C:\\path\\to\\assets" --output-dir "C:\\path\\to\\output"
 '''
     )
     replace_parser.add_argument('--bundle', required=True, help='要修改的目标 bundle 文件路径。')
-    replace_parser.add_argument('--image-folder', required=True, help='包含 .png 图片的文件夹路径。图片文件名 (不含扩展名) 需与 bundle 内资源名匹配。')
+    replace_parser.add_argument('--folder', required=True, help='包含资源文件的文件夹路径。资源文件名 (不含扩展名) 需与 bundle 内资源名匹配。')
     replace_parser.add_argument('--output-dir', required=False, default='./output/', help='保存修改后 bundle 文件的目录 (默认: ./output/)。')
     replace_parser.add_argument('--no-crc', action='store_true', help='禁用 CRC 修正功能。')
 
@@ -307,8 +307,8 @@ def main():
     # 根据命令调用相应的处理函数
     if args.command == 'update':
         handle_update(args, logger)
-    elif args.command == 'replace-png':
-        handle_replace_png(args, logger)
+    elif args.command == 'replace-asset':
+        handle_replace_asset(args, logger)
     elif args.command == 'crc':
         handle_crc(args, logger)
     elif args.command == 'env':

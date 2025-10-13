@@ -104,17 +104,19 @@ def save_bundle(
         log(traceback.format_exc())
         return False
 
-def process_png_replacement(
+def process_asset_replacement(
     target_bundle_path: Path,
-    image_folder: Path,
+    asset_folder: Path,
     output_dir: Path,
     perform_crc: bool = True,
     enable_padding: bool = False,
     log = no_log
 ):
     """
-    从PNG文件夹替换贴图。
-    输入一个包含 PNG 文件的文件夹路径，根据文件名与 bundle 中的资源名称匹配进行替换。
+    从指定文件夹替换bundle中的资源。
+    支持替换 .png, .skel, .atlas 文件。
+    - .png 文件将替换同名的 Texture2D 资源 (文件名不含后缀)。
+    - .skel 和 .atlas 文件将替换同名的 TextAsset 资源 (文件名含后缀)。
     此函数将生成的文件保存在工作目录中，以便后续进行“覆盖原文件”操作。
     返回 (是否成功, 状态消息) 的元组。
     """
@@ -123,53 +125,92 @@ def process_png_replacement(
         if not env:
             return False, "无法加载目标 Bundle 文件，即使在尝试移除潜在的 CRC 补丁后也是如此。请检查文件是否损坏。"
         
-        replacement_tasks = []
-        image_files = [f for f in os.listdir(image_folder) if f.lower().endswith(".png")]
+        # 使用字典来优化查找，按资源类型分类
+        tasks_by_type = {
+            "Texture2D": {},
+            "TextAsset": {}
+        }
+        
+        supported_extensions = [".png", ".skel", ".atlas"]
+        input_files = [f for f in os.listdir(asset_folder) if f.lower().endswith(tuple(supported_extensions))]
 
-        if not image_files:
-            log("⚠️ 警告: 在指定文件夹中没有找到任何 .png 文件。")
-            return False, "在指定文件夹中没有找到任何 .png 文件。"
+        if not input_files:
+            msg = f"在指定文件夹中没有找到任何支持的文件 ({', '.join(supported_extensions)})。"
+            log(f"⚠️ 警告: {msg}")
+            return False, msg
 
-        for filename in image_files:
-            asset_name = os.path.splitext(filename)[0]
-            full_image_path = os.path.join(image_folder, filename)
-            replacement_tasks.append((asset_name, full_image_path))
-
-        log("正在扫描 bundle 并进行替换...")
+        # 准备替换任务
+        for filename in input_files:
+            full_path = os.path.join(asset_folder, filename)
+            if filename.lower().endswith(".png"):
+                asset_name = os.path.splitext(filename)[0]
+                tasks_by_type["Texture2D"][asset_name] = full_path
+            elif filename.lower().endswith((".skel", ".atlas")):
+                asset_name = filename # 包含后缀
+                tasks_by_type["TextAsset"][asset_name] = full_path
+        
+        original_tasks_count = len(tasks_by_type["Texture2D"]) + len(tasks_by_type["TextAsset"])
+        log(f"找到 {original_tasks_count} 个待处理文件，正在扫描 bundle 并进行替换...")
         replacement_count = 0
-        original_tasks_count = len(replacement_tasks)
 
         for obj in env.objects:
+            # 如果所有任务都完成了，就提前退出循环
+            if replacement_count == original_tasks_count:
+                break
+
             if obj.type.name == "Texture2D":
                 data = obj.read()
-                task_to_remove = None
-                for asset_name, image_path in replacement_tasks:
-                    if data.m_Name == asset_name:
-                        log(f"  > 找到匹配资源 '{asset_name}'，准备替换...")
-                        try:
-                            img = Image.open(image_path).convert("RGBA")
-                            data.image = img
-                            data.save()
-                            log(f"    ✅ 成功: 资源 '{data.m_Name}' 已被替换。")
-                            replacement_count += 1
-                            task_to_remove = (asset_name, image_path)
-                            break 
-                        except Exception as e:
-                            log(f"    ❌ 错误: 替换资源 '{asset_name}' 时发生错误: {e}")
-                if task_to_remove:
-                    replacement_tasks.remove(task_to_remove)
+                # 避免重复处理
+                image_path = tasks_by_type["Texture2D"].pop(data.m_Name, None)
+                if image_path:
+                    log(f"  > 找到匹配资源 '{data.m_Name}' (Texture2D)，准备替换...")
+                    try:
+                        img = Image.open(image_path).convert("RGBA")
+                        data.image = img
+                        data.save()
+                        log(f"    ✅ 成功: 资源 '{data.m_Name}' 已被替换。")
+                        replacement_count += 1
+                    except Exception as e:
+                        log(f"    ❌ 错误: 替换资源 '{data.m_Name}' 时发生错误: {e}")
+                        # 如果替换失败，把任务加回去以便在最终报告中显示
+                        tasks_by_type["Texture2D"][data.m_Name] = image_path
+
+            elif obj.type.name == "TextAsset":
+                data = obj.read()
+                file_path = tasks_by_type["TextAsset"].pop(data.m_Name, None)
+                if file_path:
+                    log(f"  > 找到匹配资源 '{data.m_Name}' (TextAsset)，准备替换...")
+                    try:
+                        # 以二进制模式读取文件内容
+                        with open(file_path, "rb") as f:
+                            content_bytes = f.read()
+                        
+                        # 【修正】将读取到的 bytes 解码为 str，并使用正确的 .m_Script 属性
+                        # 使用 "surrogateescape" 错误处理程序以确保二进制数据也能被正确处理
+                        data.m_Script = content_bytes.decode("utf-8", "surrogateescape")
+                        
+                        # 标记对象已更改，以便在保存时写入新数据
+                        data.save()
+                        
+                        log(f"    ✅ 成功: 资源 '{data.m_Name}' 已被替换。")
+                        replacement_count += 1
+                    except Exception as e:
+                        log(f"    ❌ 错误: 替换资源 '{data.m_Name}' 时发生错误: {e}")
+                        tasks_by_type["TextAsset"][data.m_Name] = file_path
 
         if replacement_count == 0:
             log("⚠️ 警告: 没有执行任何成功的资源替换。")
-            log("请检查：\n1. 图片文件名（不含.png）是否与 bundle 内的 Texture2D 资源名完全匹配。\n2. bundle 文件是否正确。")
+            log("请检查：\n1. 文件名是否与 bundle 内的资源名完全匹配。\n2. bundle 文件是否正确。")
             return False, "没有找到任何名称匹配的资源进行替换。"
         
         log(f"\n替换完成: 成功替换 {replacement_count} / {original_tasks_count} 个资源。")
 
-        if replacement_tasks:
-            log("⚠️ 警告: 以下图片文件未在bundle中找到对应的Texture2D资源:")
-            for asset_name, _ in replacement_tasks:
-                log(f"  - {asset_name}")
+        # 报告未被替换的文件
+        unmatched_tasks = tasks_by_type["Texture2D"].items() | tasks_by_type["TextAsset"].items()
+        if unmatched_tasks:
+            log("⚠️ 警告: 以下文件未在bundle中找到对应的资源:")
+            for asset_name, file_path in unmatched_tasks:
+                log(f"  - {Path(file_path).name} (尝试匹配: '{asset_name}')")
 
         final_path = output_dir / target_bundle_path.name
 
@@ -177,14 +218,12 @@ def process_png_replacement(
             log(f"\n--- 阶段 2: CRC修正 ---")
             log(f"  > 准备直接保存并修正CRC...")
             
-            # 先保存未修正CRC的文件到最终路径
             if not save_bundle(env, final_path, log):
                 return False, "保存文件失败，操作已终止。"
             
             log(f"  > 原始文件 (用于CRC校验): {target_bundle_path}")
             log(f"  > 待修正文件: {final_path}")
             
-            # 直接对最终文件进行CRC修正
             is_crc_success = CRCUtils.manipulate_crc(target_bundle_path, final_path, enable_padding)
 
             if not is_crc_success:
