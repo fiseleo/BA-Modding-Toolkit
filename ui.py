@@ -101,6 +101,20 @@ class UIComponents:
     """一个辅助类，用于创建通用的UI组件，以减少重复代码。"""
 
     @staticmethod
+    def _debounce_wraplength(event):
+        """
+        防抖处理函数，用于更新标签的 wraplength。
+        只在窗口大小调整停止后执行。
+        """
+        widget = event.widget
+        # 如果之前已经设置了定时器，先取消它
+        if hasattr(widget, "_debounce_timer"):
+            widget.after_cancel(widget._debounce_timer)
+        
+        # 设置一个新的定时器，在指定时间后执行更新操作
+        widget._debounce_timer = widget.after(500, lambda: widget.config(wraplength=widget.winfo_width() - 10))
+
+    @staticmethod
     def create_drop_zone(parent, title, drop_cmd, browse_cmd, label_text, button_text):
         """创建通用的拖放区域组件"""
         frame = tk.LabelFrame(parent, text=title, font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
@@ -110,7 +124,7 @@ class UIComponents:
         label.pack(fill=tk.X, pady=(0, 8))
         label.drop_target_register(DND_FILES)
         label.dnd_bind('<<Drop>>', drop_cmd)
-        label.bind('<Configure>', lambda e: e.widget.config(wraplength=e.width - 10))
+        label.bind('<Configure>', UIComponents._debounce_wraplength)
 
         button = tk.Button(frame, text=button_text, command=browse_cmd, font=Theme.INPUT_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
         button.pack()
@@ -301,10 +315,10 @@ class ModUpdateTab(TabFrame):
         action_button_frame.grid_columnconfigure((0, 1), weight=1)
 
         run_button = tk.Button(action_button_frame, text="开始一键更新", command=self.run_update_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8)
-        run_button.grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=10)
+        run_button.grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=2)
         
         self.replace_button = tk.Button(action_button_frame, text="覆盖原文件", command=self.replace_original_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8, state=tk.DISABLED)
-        self.replace_button.grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=10)
+        self.replace_button.grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=2)
 
     # 旧版 Mod 的处理方法，增加自动查找回调
     def drop_old_mod(self, event):
@@ -1071,6 +1085,68 @@ class BatchModUpdateTab(TabFrame):
         self.logger.status("批量处理完成")
         messagebox.showinfo("批量处理完成", summary_message)
 
+# --- 新增：高级设置弹窗 ---
+class SettingsDialog(tk.Toplevel):
+    def __init__(self, master, app_instance):
+        super().__init__(master)
+        self.app = app_instance # 保存主应用的引用
+
+        self.title("高级设置")
+        self.geometry("600x300")
+        self.configure(bg=Theme.WINDOW_BG)
+        self.transient(master) # 绑定到主窗口
+        self.grab_set() # 模态化，阻止操作主窗口
+
+        # --- 将原有的全局设置UI搬到这里 ---
+        container = tk.Frame(self, bg=Theme.WINDOW_BG, padx=15, pady=15)
+        container.pack(fill=tk.BOTH, expand=True)
+
+        # 目录设置
+        UIComponents.create_directory_path_entry(
+            container, "游戏资源目录", self.app.game_resource_dir_var,
+            self.app.select_game_resource_directory, self.app.open_game_resource_in_explorer
+        )
+        UIComponents.create_directory_path_entry(
+            container, "输出目录", self.app.output_dir_var,
+            self.app.select_output_directory, self.app.open_output_dir_in_explorer
+        )
+        
+        # 选项设置
+        global_options_frame = tk.LabelFrame(container, text="全局选项", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
+        global_options_frame.pack(fill=tk.X, pady=(15, 0))
+        
+        self.padding_checkbox = tk.Checkbutton(global_options_frame, text="添加私货", variable=self.app.enable_padding_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG)
+        crc_checkbox = tk.Checkbutton(global_options_frame, text="CRC修正", variable=self.app.enable_crc_correction_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG, command=self.toggle_padding_checkbox_state)
+        backup_checkbox = tk.Checkbutton(global_options_frame, text="创建备份", variable=self.app.create_backup_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG)
+
+        # 压缩方式下拉框
+        compression_frame = tk.Frame(global_options_frame, bg=Theme.FRAME_BG)
+        compression_label = tk.Label(compression_frame, text="压缩方式", font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL)
+        compression_combo = ttk.Combobox(compression_frame, textvariable=self.app.compression_method_var, values=["lzma", "lz4", "original", "none"], state="readonly", font=Theme.INPUT_FONT, width=10)
+
+        # 布局 - 使用统一的grid布局确保高度对齐
+        crc_checkbox.grid(row=0, column=0, sticky="w", padx=(0, 5))
+        self.padding_checkbox.grid(row=0, column=1, sticky="w", padx=(0, 5))
+        backup_checkbox.grid(row=0, column=2, sticky="w", padx=(0, 5))
+        
+        compression_frame.grid(row=0, column=3, sticky="w", padx=(0, 5))
+        compression_label.pack(side=tk.LEFT)
+        compression_combo.pack(side=tk.LEFT)
+        
+        # 设置行权重确保垂直对齐
+        global_options_frame.rowconfigure(0, weight=1)
+
+        # 初始化padding复选框状态
+        self.toggle_padding_checkbox_state()
+
+    def toggle_padding_checkbox_state(self):
+        """根据CRC修正复选框的状态，启用或禁用添加私货复选框"""
+        if self.app.enable_crc_correction_var.get():
+            self.padding_checkbox.config(state=tk.NORMAL)
+        else:
+            self.app.enable_padding_var.set(False)
+            self.padding_checkbox.config(state=tk.DISABLED)
+
 # --- 主应用 ---
 
 class App(tk.Frame):
@@ -1084,7 +1160,7 @@ class App(tk.Frame):
 
     def setup_main_window(self):
         self.master.title("BA Modding Toolkit")
-        self.master.geometry("1200x900")
+        self.master.geometry("700x850")
         self.master.configure(bg=Theme.WINDOW_BG)
 
     def init_shared_variables(self):
@@ -1109,65 +1185,41 @@ class App(tk.Frame):
         self.replace_all_var = tk.BooleanVar(value=False)
 
     def create_widgets(self):
-        main_frame = tk.Frame(self.master, bg=Theme.WINDOW_BG, padx=10, pady=10)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        main_frame.grid_columnconfigure(0, weight=1); main_frame.grid_columnconfigure(1, weight=1)
-        main_frame.grid_rowconfigure(0, weight=1)
+        # 使用可拖动的 PanedWindow 替换固定的 grid 布局
+        paned_window = ttk.PanedWindow(self.master, orient=tk.VERTICAL)
+        paned_window.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # 左侧控制面板
-        left_frame = tk.Frame(main_frame, bg=Theme.WINDOW_BG)
-        left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        # 上方控制面板
+        top_frame = tk.Frame(paned_window, bg=Theme.WINDOW_BG)
+        paned_window.add(top_frame, weight=1)
 
-        # --- 共享设置区域 ---
-        shared_settings_frame = tk.LabelFrame(left_frame, text="全局设置", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
-        shared_settings_frame.pack(fill=tk.X, pady=(0, 15))
+        # 下方日志区域
+        bottom_frame = tk.Frame(paned_window, bg=Theme.WINDOW_BG)
+        paned_window.add(bottom_frame, weight=1)
 
-        UIComponents.create_directory_path_entry(
-            shared_settings_frame, "游戏资源目录", self.game_resource_dir_var,
-            self.select_game_resource_directory, self.open_game_resource_in_explorer
-        )
-        UIComponents.create_directory_path_entry(
-            shared_settings_frame, "输出目录", self.output_dir_var,
-            self.select_output_directory, self.open_output_dir_in_explorer
-        )
+        # 顶部框架，用于放置设置按钮
+        top_controls_frame = tk.Frame(top_frame, bg=Theme.WINDOW_BG)
+        top_controls_frame.pack(fill=tk.X, pady=(0, 10))
         
-        # --- 全局选项 ---
-        global_options_frame = tk.Frame(shared_settings_frame, bg=Theme.FRAME_BG)
-        global_options_frame.pack(fill=tk.X, pady=(10, 0))
+        # 使用grid布局让按钮横向拉伸填满
+        settings_button = tk.Button(top_controls_frame, text="Settings", command=self.open_settings_dialog,
+                                    font=Theme.BUTTON_FONT, bg=Theme.BUTTON_WARNING_BG, fg=Theme.BUTTON_FG,
+                                    relief=tk.FLAT)
+        settings_button.grid(row=0, column=0, sticky="ew", padx=(0, 5))
         
-        self.padding_checkbox = tk.Checkbutton(global_options_frame, text="添加私货", variable=self.enable_padding_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG)
+        environment_button = tk.Button(top_controls_frame, text="Env", command=self.show_environment_info, 
+                                       font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SECONDARY_BG, fg=Theme.BUTTON_FG, 
+                                       relief=tk.FLAT)
+        environment_button.grid(row=0, column=1, sticky="ew")
         
-        crc_checkbox = tk.Checkbutton(global_options_frame, text="CRC修正", variable=self.enable_crc_correction_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG, command=self.toggle_padding_checkbox_state)
-        
-        backup_checkbox = tk.Checkbutton(global_options_frame, text="创建备份", variable=self.create_backup_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG)
+        # 设置列权重，让按钮均匀拉伸
+        top_controls_frame.columnconfigure(0, weight=1)
+        top_controls_frame.columnconfigure(1, weight=1)
 
-        # Env 按钮
-        environment_button = tk.Button(global_options_frame, text="Env", command=self.show_environment_info, 
-                                      font=Theme.BUTTON_FONT, bg=Theme.BUTTON_WARNING_BG, fg=Theme.BUTTON_FG, 
-                                      relief=tk.FLAT, padx=3, pady=2)
-
-        # 压缩方式下拉框
-        compression_label = tk.Label(global_options_frame, text="压缩方式:", font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL)
-        compression_combo = ttk.Combobox(global_options_frame, textvariable=self.compression_method_var, 
-                                         values=["lzma", "lz4", "original", "none"], 
-                                         state="readonly", font=Theme.INPUT_FONT, width=10)
-
-        crc_checkbox.pack(side=tk.LEFT, padx=(0, 20))
-        self.padding_checkbox.pack(side=tk.LEFT, padx=(0, 20))
-        backup_checkbox.pack(side=tk.LEFT, padx=(0, 20))
-        compression_label.pack(side=tk.LEFT)
-        compression_combo.pack(side=tk.LEFT, padx=(5, 20))
-        environment_button.pack(side=tk.LEFT)
-        # --- 全局选项结束 ---
+        self.notebook = self.create_notebook(top_frame)
         
-        # --- 共享设置区域结束 ---
-
-        self.notebook = self.create_notebook(left_frame)
-        
-        # 右侧日志区域
-        right_frame = tk.Frame(main_frame, bg=Theme.FRAME_BG, relief=tk.RAISED, bd=1)
-        right_frame.grid(row=0, column=1, sticky="nsew")
-        self.log_text = self.create_log_area(right_frame)
+        # 创建日志区域
+        self.log_text = self.create_log_area(bottom_frame)
 
         # 底部状态栏
         self.status_label = tk.Label(self.master, text="", bd=1, relief=tk.SUNKEN, anchor=tk.W,
@@ -1178,19 +1230,11 @@ class App(tk.Frame):
         
         # 将 logger 和共享变量传递给 Tabs
         self.populate_notebook()
-        
-        # 初始化 padding checkbox 状态
-        self.toggle_padding_checkbox_state()
 
-    def toggle_padding_checkbox_state(self):
-        """根据CRC修正复选框的状态，启用或禁用添加私货复选框，并取消勾选"""
-        if self.enable_crc_correction_var.get():
-            # CRC修正启用时，添加私货框可用
-            self.padding_checkbox.config(state=tk.NORMAL)
-        else:
-            # CRC修正禁用时，添加私货框禁用并取消勾选
-            self.enable_padding_var.set(False)
-            self.padding_checkbox.config(state=tk.DISABLED)
+    def open_settings_dialog(self):
+        """打开高级设置对话框"""
+        dialog = SettingsDialog(self.master, self)
+        self.master.wait_window(dialog) # 等待对话框关闭
 
     # --- 新增：共享目录选择和打开的方法 ---
     def _select_directory(self, var, title):
@@ -1256,9 +1300,9 @@ class App(tk.Frame):
 
     def create_log_area(self, parent):
         log_frame = tk.LabelFrame(parent, text="Log", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, pady=10)
-        log_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        log_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=0) # 日志区不需要顶部pady
 
-        log_text = tk.Text(log_frame, wrap=tk.WORD, bg=Theme.LOG_BG, fg=Theme.LOG_FG, font=Theme.LOG_FONT, relief=tk.FLAT, bd=0, padx=5, pady=5, insertbackground=Theme.LOG_FG)
+        log_text = tk.Text(log_frame, wrap=tk.WORD, bg=Theme.LOG_BG, fg=Theme.LOG_FG, font=Theme.LOG_FONT, relief=tk.FLAT, bd=0, padx=5, pady=5, insertbackground=Theme.LOG_FG, height=10) #添加 height 参数
         scrollbar = tk.Scrollbar(log_frame, orient=tk.VERTICAL, command=log_text.yview)
         log_text.configure(yscrollcommand=scrollbar.set)
         
