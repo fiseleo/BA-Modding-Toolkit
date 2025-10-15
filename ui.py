@@ -205,6 +205,15 @@ class TabFrame(ttk.Frame):
         self.logger.log(f"已加载 {folder_type_name}: {path.name}")
         self.logger.status(f"已加载 {folder_type_name}")
 
+    def get_game_search_dirs(self, base_game_dir: Path, auto_detect_subdirs: bool) -> list[Path]:
+        if auto_detect_subdirs:
+            return [
+                base_game_dir / "BlueArchive_Data/StreamingAssets/PUB/Resource/GameData/Windows",
+                base_game_dir / "BlueArchive_Data/StreamingAssets/PUB/Resource/Preload/Windows"
+            ]
+        else:
+            return [base_game_dir]
+
 
 def replace_file(source_path: Path, 
                     dest_path: Path, 
@@ -255,7 +264,7 @@ def replace_file(source_path: Path,
 # --- 具体 Tab 实现 ---
 
 class ModUpdateTab(TabFrame):
-    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var, replace_all_var, compression_method_var):
+    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var, replace_all_var, compression_method_var, auto_detect_subdirs_var):
         self.old_mod_path: Path = None
         self.new_mod_path: Path = None 
         self.final_output_path: Path = None
@@ -273,6 +282,7 @@ class ModUpdateTab(TabFrame):
         # 接收共享的变量
         self.game_resource_dir_var: Path = game_resource_dir_var
         self.output_dir_var: Path = output_dir_var
+        self.auto_detect_subdirs = auto_detect_subdirs_var
 
         # 1. 旧版 Mod 文件
         _, self.old_mod_label = UIComponents.create_file_drop_zone(
@@ -366,9 +376,13 @@ class ModUpdateTab(TabFrame):
         self.new_mod_label.config(text="正在搜索新版资源...", fg=Theme.COLOR_WARNING)
         self.logger.status("正在搜索新版资源...")
         
+        # 使用通用函数构造搜索路径
+        base_game_dir = Path(self.game_resource_dir_var.get())
+        search_paths = self.get_game_search_dirs(base_game_dir, self.auto_detect_subdirs.get())
+
         found_path, message = processing.find_new_bundle_path(
             self.old_mod_path,
-            Path(self.game_resource_dir_var.get()),
+            search_paths,
             self.logger.log
         )
         
@@ -626,13 +640,14 @@ class AssetReplacementTab(TabFrame):
         )
 
 class CrcToolTab(TabFrame):
-    def create_widgets(self, game_resource_dir_var, enable_padding_var, create_backup_var):
+    def create_widgets(self, game_resource_dir_var, enable_padding_var, create_backup_var, auto_detect_subdirs_var):
         self.original_path = None
         self.modified_path = None
         self.enable_padding = enable_padding_var
         self.create_backup = create_backup_var
         # 接收共享的游戏资源目录变量
         self.game_resource_dir_var = game_resource_dir_var
+        self.auto_detect_subdirs = auto_detect_subdirs_var
 
         # 1. 修改后文件
         _, self.modified_label = UIComponents.create_file_drop_zone(
@@ -698,17 +713,32 @@ class CrcToolTab(TabFrame):
         self.logger.log(f"已加载CRC修改后文件: {path.name}")
         
         game_dir_str = self.game_resource_dir_var.get()
-        if game_dir_str:
-            game_dir = Path(game_dir_str)
-            if game_dir.is_dir():
-                candidate = game_dir / path.name
-                if candidate.exists():
-                    self.set_original_file(candidate)
-                    self.logger.log(f"已自动找到并加载原始文件: {candidate.name}")
-                else:
-                    self.logger.log(f"⚠️ 警告: 未能在 '{game_dir.name}' 中找到对应的原始文件。")
-        else:
+        if not game_dir_str:
             self.logger.log("⚠️ 警告: 未设置游戏资源目录，无法自动寻找原始文件。")
+            return
+
+        base_game_dir = Path(game_dir_str)
+        if not base_game_dir.is_dir():
+            self.logger.log(f"⚠️ 警告: 游戏资源目录 '{game_dir_str}' 不存在。")
+            return
+        
+        # 使用通用函数构造搜索目录列表
+        search_dirs = self.get_game_search_dirs(base_game_dir, self.auto_detect_subdirs.get())
+
+        found = False
+        for directory in search_dirs:
+            if not directory.is_dir():
+                continue # 跳过不存在的子目录
+            
+            candidate = directory / path.name
+            if candidate.exists():
+                self.set_original_file(candidate)
+                self.logger.log(f"已在 '{directory.name}' 中自动找到并加载原始文件: {candidate.name}")
+                found = True
+                break # 找到后即停止搜索
+        
+        if not found:
+            self.logger.log(f"⚠️ 警告: 未能在指定的资源目录中找到对应的原始文件 '{path.name}'。")
 
     def _validate_paths(self):
         if not self.original_path or not self.modified_path:
@@ -840,7 +870,7 @@ class CrcToolTab(TabFrame):
 
 
 class BatchModUpdateTab(TabFrame):
-    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var, replace_all_var, compression_method_var):
+    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var, replace_all_var, compression_method_var, auto_detect_subdirs_var):
         self.mod_file_list: list[Path] = []
         
         # 接收共享变量
@@ -854,6 +884,7 @@ class BatchModUpdateTab(TabFrame):
         self.replace_mesh = replace_mesh_var
         self.replace_all = replace_all_var
         self.compression_method = compression_method_var
+        self.auto_detect_subdirs = auto_detect_subdirs_var
 
         # --- 1. 输入区域 ---
         input_frame = tk.LabelFrame(self, text="输入 Mod 文件/文件夹", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
@@ -1003,7 +1034,10 @@ class BatchModUpdateTab(TabFrame):
         self.logger.status("正在批量处理中...")
 
         output_dir = Path(self.output_dir_var.get())
-        game_resource_dir = Path(self.game_resource_dir_var.get())
+        
+        # 使用通用函数构造搜索路径
+        base_game_dir = Path(self.game_resource_dir_var.get())
+        search_paths = self.get_game_search_dirs(base_game_dir, self.auto_detect_subdirs.get())
         
         try:
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -1042,7 +1076,7 @@ class BatchModUpdateTab(TabFrame):
 
             # 1. 查找对应的新版资源文件
             new_bundle_path, find_message = processing.find_new_bundle_path(
-                old_mod_path, game_resource_dir, self.logger.log
+                old_mod_path, search_paths, self.logger.log
             )
 
             if not new_bundle_path:
@@ -1092,7 +1126,7 @@ class SettingsDialog(tk.Toplevel):
         self.app = app_instance # 保存主应用的引用
 
         self.title("高级设置")
-        self.geometry("600x300")
+        self.geometry("600x350") # 稍微增加一点高度以容纳复选框
         self.configure(bg=Theme.WINDOW_BG)
         self.transient(master) # 绑定到主窗口
         self.grab_set() # 模态化，阻止操作主窗口
@@ -1101,11 +1135,33 @@ class SettingsDialog(tk.Toplevel):
         container = tk.Frame(self, bg=Theme.WINDOW_BG, padx=15, pady=15)
         container.pack(fill=tk.BOTH, expand=True)
 
-        # 目录设置
-        UIComponents.create_directory_path_entry(
-            container, "游戏资源目录", self.app.game_resource_dir_var,
-            self.app.select_game_resource_directory, self.app.open_game_resource_in_explorer
+        # --- 手动创建游戏资源目录UI，以实现动态标题 ---
+        self.game_dir_frame = tk.LabelFrame(container, text="", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=10)
+        self.game_dir_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # 内部容器，用于放置输入框和按钮
+        entry_button_container = tk.Frame(self.game_dir_frame, bg=Theme.FRAME_BG)
+        entry_button_container.pack(fill=tk.X)
+
+        entry = tk.Entry(entry_button_container, textvariable=self.app.game_resource_dir_var, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1)
+        entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5), ipady=3)
+
+        select_btn = tk.Button(entry_button_container, text="选", command=self.app.select_game_resource_directory, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=3)
+        select_btn.pack(side=tk.LEFT, padx=(0, 5))
+        open_btn = tk.Button(entry_button_container, text="开", command=self.app.open_game_resource_in_explorer, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SECONDARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=3)
+        open_btn.pack(side=tk.LEFT)
+
+        # 添加新的复选框
+        self.auto_detect_checkbox = tk.Checkbutton(
+            self.game_dir_frame, 
+            text="自动检测标准子目录 (GameData/Preload)",
+            variable=self.app.auto_detect_subdirs_var,
+            command=self._on_auto_detect_toggle,
+            font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG
         )
+        self.auto_detect_checkbox.pack(anchor='w', pady=(5, 0))
+        # --- 游戏资源目录UI结束 ---
+
         UIComponents.create_directory_path_entry(
             container, "输出目录", self.app.output_dir_var,
             self.app.select_output_directory, self.app.open_output_dir_in_explorer
@@ -1136,8 +1192,16 @@ class SettingsDialog(tk.Toplevel):
         # 设置行权重确保垂直对齐
         global_options_frame.rowconfigure(0, weight=1)
 
-        # 初始化padding复选框状态
+        # 初始化所有动态UI的状态
         self.toggle_padding_checkbox_state()
+        self._on_auto_detect_toggle()
+
+    def _on_auto_detect_toggle(self):
+        """当自动检测复选框状态改变时，更新UI"""
+        if self.app.auto_detect_subdirs_var.get():
+            self.game_dir_frame.config(text="游戏根目录")
+        else:
+            self.game_dir_frame.config(text="自定义资源目录")
 
     def toggle_padding_checkbox_state(self):
         """根据CRC修正复选框的状态，启用或禁用添加私货复选框"""
@@ -1165,11 +1229,15 @@ class App(tk.Frame):
 
     def init_shared_variables(self):
         """初始化所有Tabs共享的变量。"""
-        # 尝试定位游戏资源目录
-        game_dir = Path(r"D:\SteamLibrary\steamapps\common\BlueArchive\BlueArchive_Data\StreamingAssets\PUB\Resource\GameData\Windows")
-        if not game_dir.is_dir():
-            game_dir = Path.home()
-        self.game_resource_dir_var = tk.StringVar(value=str(game_dir))
+        # 尝试定位游戏根目录
+        game_root_dir = Path(r"D:\SteamLibrary\steamapps\common\BlueArchive")
+        if not game_root_dir.is_dir():
+            # 如果标准路径不存在，则退回到用户主目录
+            game_root_dir = Path.home()
+        self.game_resource_dir_var = tk.StringVar(value=str(game_root_dir))
+        
+        # 新增：用于控制目录模式的变量
+        self.auto_detect_subdirs_var = tk.BooleanVar(value=True)
         
         # 共享变量
         self.output_dir_var = tk.StringVar(value=str(Path.cwd() / "output"))
@@ -1269,7 +1337,12 @@ class App(tk.Frame):
         self.logger.log(get_environment_info())
 
     def select_game_resource_directory(self):
-        self._select_directory(self.game_resource_dir_var, "选择游戏资源目录")
+        # 根据复选框状态决定对话框标题
+        if self.auto_detect_subdirs_var.get():
+            title = "选择游戏根目录"
+        else:
+            title = "选择自定义资源目录"
+        self._select_directory(self.game_resource_dir_var, title)
         
     def open_game_resource_in_explorer(self):
         self._open_directory_in_explorer(self.game_resource_dir_var.get())
@@ -1324,7 +1397,8 @@ class App(tk.Frame):
                                   replace_textasset_var=self.replace_textasset_var,
                                   replace_mesh_var=self.replace_mesh_var,
                                   replace_all_var=self.replace_all_var,
-                                  compression_method_var=self.compression_method_var)
+                                  compression_method_var=self.compression_method_var,
+                                  auto_detect_subdirs_var=self.auto_detect_subdirs_var)
         self.notebook.add(update_tab, text="一键更新 Mod")
 
         # Tab: 批量更新
@@ -1338,14 +1412,16 @@ class App(tk.Frame):
                                              replace_textasset_var=self.replace_textasset_var,
                                              replace_mesh_var=self.replace_mesh_var,
                                              replace_all_var=self.replace_all_var,
-                                             compression_method_var=self.compression_method_var)
+                                             compression_method_var=self.compression_method_var,
+                                             auto_detect_subdirs_var=self.auto_detect_subdirs_var)
         self.notebook.add(batch_update_tab, text="批量更新 Mod")
 
         # Tab: CRC 工具
         crc_tab = CrcToolTab(self.notebook, self.logger, 
                              game_resource_dir_var=self.game_resource_dir_var,
                              enable_padding_var=self.enable_padding_var,
-                             create_backup_var=self.create_backup_var)
+                             create_backup_var=self.create_backup_var,
+                             auto_detect_subdirs_var=self.auto_detect_subdirs_var)
         self.notebook.add(crc_tab, text="CRC 修正工具")
 
         # Tab: 资源文件夹替换

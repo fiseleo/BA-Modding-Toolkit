@@ -404,23 +404,15 @@ def process_bundle_to_bundle_replacement(
         return False, f"处理过程中发生严重错误:\n{e}"
 
 
-def find_new_bundle_path(
-    old_mod_path: Path,
-    game_resource_dir: Path,
-    log = no_log
-):
+def get_filename_prefix(bundle_path: Path, log = no_log):
     """
-    根据旧版Mod文件，在游戏资源目录中智能查找对应的新版文件。
-    返回 (找到的路径对象, 状态消息) 的元组。
+    从旧版Mod文件名中提取用于搜索新版文件的前缀。
+    返回 (前缀字符串, 状态消息) 的元组。
     """
-    # TODO: 只用Texture2D比较好像不太对，但是it works
-
-    log(f"正在为 '{old_mod_path.name}' 搜索对应文件...")
-
     # 1. 通过日期模式确定文件名位置
-    date_match = re.search(r'\d{4}-\d{2}-\d{2}', old_mod_path.name)
+    date_match = re.search(r'\d{4}-\d{2}-\d{2}', bundle_path.name)
     if not date_match:
-        msg = f"无法在旧文件名 '{old_mod_path.name}' 中找到日期模式 (YYYY-MM-DD)，无法确定用于匹配的文件前缀。"
+        msg = f"无法在文件名 '{bundle_path.name}' 中找到日期模式 (YYYY-MM-DD)，无法确定用于匹配的文件前缀。"
         log(f"  > 失败: {msg}")
         return None, msg
 
@@ -429,7 +421,7 @@ def find_new_bundle_path(
     
     # 查找日期模式之前的最后一个连字符分隔的部分
     # 例如在 "...-textures-YYYY-MM-DD..." 中的 "textures"
-    before_date = old_mod_path.name[:prefix_end_index]
+    before_date = bundle_path.name[:prefix_end_index]
     
     # 如果日期模式前有连字符，尝试提取最后一个部分
     if before_date.endswith('-'):
@@ -446,15 +438,52 @@ def find_new_bundle_path(
         # 如果找到了资源类型，则前缀不应该包含这个部分
         search_prefix = before_date.replace(f'-{last_part}', '') + '-'
     else:
-        search_prefix = old_mod_path.name[:prefix_end_index]
+        search_prefix = bundle_path.name[:prefix_end_index]
     
     log(f"  > 使用前缀: '{search_prefix}'")
+    return search_prefix, "前缀提取成功"
+
+
+def find_new_bundle_path(
+    old_mod_path: Path,
+    game_resource_dir: Path | list[Path],
+    log = no_log
+):
+    """
+    根据旧版Mod文件，在游戏资源目录中智能查找对应的新版文件。
+    支持单个目录路径或目录路径列表。
+    返回 (找到的路径对象, 状态消息) 的元组。
+    """
+    # TODO: 只用Texture2D比较好像不太对，但是it works
+
+    log(f"正在为 '{old_mod_path.name}' 搜索对应文件...")
+
+    # 1. 提取文件名前缀
+    prefix, prefix_message = get_filename_prefix(old_mod_path, log)
+    if not prefix:
+        return None, prefix_message
     extension = '.bundle'
 
+    # 2. 处理单个目录或目录列表
+    if isinstance(game_resource_dir, Path):
+        search_dirs = [game_resource_dir]
+        log(f"  > 搜索目录: {game_resource_dir}")
+    else:
+        search_dirs = game_resource_dir
+        log(f"  > 搜索目录列表: {[str(d) for d in search_dirs]}")
+
     # 3. 查找所有候选文件（前缀相同且扩展名一致）
-    candidates = [f for f in game_resource_dir.iterdir() if f.is_file() and f.name.startswith(search_prefix) and f.suffix == extension]
+    candidates = []
+    for search_dir in search_dirs:
+        if search_dir.exists() and search_dir.is_dir():
+            dir_candidates = [f for f in search_dir.iterdir() if f.is_file() and f.name.startswith(prefix) and f.suffix == extension]
+            candidates.extend(dir_candidates)
+    
     if not candidates:
-        msg = f"在指定目录 '{game_resource_dir}' 中未找到任何匹配的文件。"
+        if isinstance(game_resource_dir, Path):
+            msg = f"在指定目录 '{game_resource_dir}' 中未找到任何匹配的文件。"
+        else:
+            msg = f"在所有指定目录中未找到任何匹配的文件。"
         log(f"  > 失败: {msg}")
         return None, msg
     log(f"  > 找到 {len(candidates)} 个候选文件，正在验证内容...")
