@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import threading
 import os
+import configparser
 
 # 导入自定义模块
 import processing
@@ -678,7 +679,7 @@ class CrcToolTab(TabFrame):
         button_frame.grid_columnconfigure((0, 1, 2), weight=1)
         
         tk.Button(button_frame, text="运行CRC修正", command=self.run_correction_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=0, sticky="ew", padx=5)
-        tk.Button(button_frame, text="计算CRC值", command=self.calculate_values_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_WARNING_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=1, sticky="ew", padx=5)
+        tk.Button(button_frame, text="计算CRC值", command=self.calculate_values_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=1, sticky="ew", padx=5)
         tk.Button(button_frame, text="替换原始文件", command=self.replace_original_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=2, sticky="ew", padx=5)
 
     def drop_original(self, event): 
@@ -928,8 +929,8 @@ class BatchModUpdateTab(TabFrame):
 
         tk.Button(button_frame, text="添加文件", command=self.browse_add_files, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT).grid(row=0, column=0, sticky="ew", padx=(0, 5))
         tk.Button(button_frame, text="添加文件夹", command=self.browse_add_folder, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT).grid(row=0, column=1, sticky="ew", padx=5)
-        tk.Button(button_frame, text="移除选中", command=self.remove_selected_files, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_ACCENT_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT).grid(row=0, column=2, sticky="ew", padx=5)
-        tk.Button(button_frame, text="清空列表", command=self.clear_list, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_WARNING_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT).grid(row=0, column=3, sticky="ew", padx=(5, 0))
+        tk.Button(button_frame, text="移除选中", command=self.remove_selected_files, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_WARNING_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT).grid(row=0, column=2, sticky="ew", padx=5)
+        tk.Button(button_frame, text="清空列表", command=self.clear_list, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT).grid(row=0, column=3, sticky="ew", padx=(5, 0))
 
         # --- 2. 资源替换类型选项 ---
         replace_options_frame = tk.LabelFrame(self, text="替换资源类型", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
@@ -1119,6 +1120,97 @@ class BatchModUpdateTab(TabFrame):
         self.logger.status("批量处理完成")
         messagebox.showinfo("批量处理完成", summary_message)
 
+# --- 配置管理类 ---
+
+class ConfigManager:
+    """配置管理类，负责保存和读取应用设置到config.ini文件"""
+    
+    def __init__(self, config_file="config.ini"):
+        self.config_file = Path(config_file)
+        self.config = configparser.ConfigParser()
+        
+    def save_config(self, app_instance):
+        """保存当前应用配置到文件"""
+        try:
+            # 清空现有配置
+            self.config.clear()
+            
+            # 添加目录设置
+            self.config['Directories'] = {
+                'game_resource_dir': app_instance.game_resource_dir_var.get(),
+                'output_dir': app_instance.output_dir_var.get(),
+                'auto_detect_subdirs': str(app_instance.auto_detect_subdirs_var.get())
+            }
+            
+            # 添加全局选项
+            self.config['GlobalOptions'] = {
+                'enable_padding': str(app_instance.enable_padding_var.get()),
+                'enable_crc_correction': str(app_instance.enable_crc_correction_var.get()),
+                'create_backup': str(app_instance.create_backup_var.get()),
+                'compression_method': app_instance.compression_method_var.get()
+            }
+            
+            # 添加资源类型选项
+            self.config['ResourceTypes'] = {
+                'replace_texture2d': str(app_instance.replace_texture2d_var.get()),
+                'replace_textasset': str(app_instance.replace_textasset_var.get()),
+                'replace_mesh': str(app_instance.replace_mesh_var.get()),
+                'replace_all': str(app_instance.replace_all_var.get())
+            }
+            
+            # 写入文件
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                self.config.write(f)
+                
+            return True
+        except Exception as e:
+            print(f"保存配置时出错: {e}")
+            return False
+    
+    def load_config(self, app_instance):
+        """从文件加载配置到应用实例"""
+        try:
+            if not self.config_file.exists():
+                return False
+                
+            self.config.read(self.config_file, encoding='utf-8')
+            
+            # 加载目录设置
+            if 'Directories' in self.config:
+                if 'game_resource_dir' in self.config['Directories']:
+                    app_instance.game_resource_dir_var.set(self.config['Directories']['game_resource_dir'])
+                if 'output_dir' in self.config['Directories']:
+                    app_instance.output_dir_var.set(self.config['Directories']['output_dir'])
+                if 'auto_detect_subdirs' in self.config['Directories']:
+                    app_instance.auto_detect_subdirs_var.set(self.config['Directories']['auto_detect_subdirs'].lower() == 'true')
+            
+            # 加载全局选项
+            if 'GlobalOptions' in self.config:
+                if 'enable_padding' in self.config['GlobalOptions']:
+                    app_instance.enable_padding_var.set(self.config['GlobalOptions']['enable_padding'].lower() == 'true')
+                if 'enable_crc_correction' in self.config['GlobalOptions']:
+                    app_instance.enable_crc_correction_var.set(self.config['GlobalOptions']['enable_crc_correction'].lower() == 'true')
+                if 'create_backup' in self.config['GlobalOptions']:
+                    app_instance.create_backup_var.set(self.config['GlobalOptions']['create_backup'].lower() == 'true')
+                if 'compression_method' in self.config['GlobalOptions']:
+                    app_instance.compression_method_var.set(self.config['GlobalOptions']['compression_method'])
+            
+            # 加载资源类型选项
+            if 'ResourceTypes' in self.config:
+                if 'replace_texture2d' in self.config['ResourceTypes']:
+                    app_instance.replace_texture2d_var.set(self.config['ResourceTypes']['replace_texture2d'].lower() == 'true')
+                if 'replace_textasset' in self.config['ResourceTypes']:
+                    app_instance.replace_textasset_var.set(self.config['ResourceTypes']['replace_textasset'].lower() == 'true')
+                if 'replace_mesh' in self.config['ResourceTypes']:
+                    app_instance.replace_mesh_var.set(self.config['ResourceTypes']['replace_mesh'].lower() == 'true')
+                if 'replace_all' in self.config['ResourceTypes']:
+                    app_instance.replace_all_var.set(self.config['ResourceTypes']['replace_all'].lower() == 'true')
+            
+            return True
+        except Exception as e:
+            print(f"加载配置时出错: {e}")
+            return False
+
 # --- 新增：高级设置弹窗 ---
 class SettingsDialog(tk.Toplevel):
     def __init__(self, master, app_instance):
@@ -1126,7 +1218,7 @@ class SettingsDialog(tk.Toplevel):
         self.app = app_instance # 保存主应用的引用
 
         self.title("高级设置")
-        self.geometry("600x350") # 稍微增加一点高度以容纳复选框
+        self.geometry("550x380")
         self.configure(bg=Theme.WINDOW_BG)
         self.transient(master) # 绑定到主窗口
         self.grab_set() # 模态化，阻止操作主窗口
@@ -1151,7 +1243,6 @@ class SettingsDialog(tk.Toplevel):
         open_btn = tk.Button(entry_button_container, text="开", command=self.app.open_game_resource_in_explorer, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SECONDARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=3)
         open_btn.pack(side=tk.LEFT)
 
-        # 添加新的复选框
         self.auto_detect_checkbox = tk.Checkbutton(
             self.game_dir_frame, 
             text="自动检测标准子目录 (GameData/Preload)",
@@ -1195,6 +1286,27 @@ class SettingsDialog(tk.Toplevel):
         # 初始化所有动态UI的状态
         self.toggle_padding_checkbox_state()
         self._on_auto_detect_toggle()
+        
+        # 添加配置操作按钮
+        config_buttons_frame = tk.Frame(container, bg=Theme.WINDOW_BG)
+        config_buttons_frame.pack(fill=tk.X, pady=(15, 0))
+        
+        # 配置网格布局，让三个按钮均匀分布
+        config_buttons_frame.columnconfigure(0, weight=1)
+        config_buttons_frame.columnconfigure(1, weight=1)
+        config_buttons_frame.columnconfigure(2, weight=1)
+        
+        save_button = tk.Button(config_buttons_frame, text="Save", command=self.app.save_current_config,
+                               font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
+        save_button.grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        
+        load_button = tk.Button(config_buttons_frame, text="Load", command=self.load_config,
+                               font=Theme.BUTTON_FONT, bg=Theme.BUTTON_WARNING_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
+        load_button.grid(row=0, column=1, sticky="ew", padx=5)
+        
+        reset_button = tk.Button(config_buttons_frame, text="Default", command=self.reset_to_default,
+                               font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
+        reset_button.grid(row=0, column=2, sticky="ew", padx=(5, 0))
 
     def _on_auto_detect_toggle(self):
         """当自动检测复选框状态改变时，更新UI"""
@@ -1210,6 +1322,30 @@ class SettingsDialog(tk.Toplevel):
         else:
             self.app.enable_padding_var.set(False)
             self.padding_checkbox.config(state=tk.DISABLED)
+    
+    def load_config(self):
+        """加载配置文件并更新UI"""
+        if self.app.config_manager.load_config(self.app):
+            self.app.logger.log("配置加载成功")
+            messagebox.showinfo("成功", "配置已从 config.ini 加载")
+            # 更新UI状态
+            self.toggle_padding_checkbox_state()
+            self._on_auto_detect_toggle()
+        else:
+            self.app.logger.log("配置加载失败")
+            messagebox.showerror("错误", "配置加载失败，请检查配置文件是否存在")
+    
+    def reset_to_default(self):
+        """重置为默认设置"""
+        if messagebox.askyesno("确认", "确定要重置为默认设置吗？"):
+            # 使用统一的默认值设置方法
+            self.app._set_default_values()
+            
+            # 更新UI状态
+            self.toggle_padding_checkbox_state()
+            self._on_auto_detect_toggle()
+            
+            self.app.logger.log("已重置为默认设置")
 
 # --- 主应用 ---
 
@@ -1218,8 +1354,10 @@ class App(tk.Frame):
         super().__init__(master)
         self.master = master
         self.setup_main_window()
+        self.config_manager = ConfigManager()
         self.init_shared_variables()
         self.create_widgets()
+        self.load_config_on_startup()  # 启动时加载配置
         self.logger.status("准备就绪")
 
     def setup_main_window(self):
@@ -1227,30 +1365,43 @@ class App(tk.Frame):
         self.master.geometry("700x850")
         self.master.configure(bg=Theme.WINDOW_BG)
 
-    def init_shared_variables(self):
-        """初始化所有Tabs共享的变量。"""
+    def _set_default_values(self):
+        """设置所有共享变量的默认值。"""
         # 尝试定位游戏根目录
-        game_root_dir = Path(r"D:\SteamLibrary\steamapps\common\BlueArchive")
-        if not game_root_dir.is_dir():
-            # 如果标准路径不存在，则退回到用户主目录
-            game_root_dir = Path.home()
-        self.game_resource_dir_var = tk.StringVar(value=str(game_root_dir))
-        
-        # 新增：用于控制目录模式的变量
-        self.auto_detect_subdirs_var = tk.BooleanVar(value=True)
+        game_root_dir = Path(r"C:\Program Files (x86)\Steam\steamapps\common\BlueArchive")
+        self.game_resource_dir_var.set(str(game_root_dir))
+        self.auto_detect_subdirs_var.set(True)
         
         # 共享变量
-        self.output_dir_var = tk.StringVar(value=str(Path.cwd() / "output"))
-        self.enable_padding_var = tk.BooleanVar(value=False)
-        self.enable_crc_correction_var = tk.BooleanVar(value=True)
-        self.create_backup_var = tk.BooleanVar(value=True)
-        self.compression_method_var = tk.StringVar(value="lzma")
+        self.output_dir_var.set(str(Path.cwd() / "output"))
+        self.enable_padding_var.set(False)
+        self.enable_crc_correction_var.set(True)
+        self.create_backup_var.set(True)
+        self.compression_method_var.set("lzma")
         
         # 一键更新的资源类型选项
-        self.replace_texture2d_var = tk.BooleanVar(value=True)
-        self.replace_textasset_var = tk.BooleanVar(value=True)
-        self.replace_mesh_var = tk.BooleanVar(value=True)
-        self.replace_all_var = tk.BooleanVar(value=False)
+        self.replace_texture2d_var.set(True)
+        self.replace_textasset_var.set(True)
+        self.replace_mesh_var.set(True)
+        self.replace_all_var.set(False)
+
+    def init_shared_variables(self):
+        """初始化所有Tabs共享的变量。"""
+        # 创建变量
+        self.game_resource_dir_var = tk.StringVar()
+        self.auto_detect_subdirs_var = tk.BooleanVar()
+        self.output_dir_var = tk.StringVar()
+        self.enable_padding_var = tk.BooleanVar()
+        self.enable_crc_correction_var = tk.BooleanVar()
+        self.create_backup_var = tk.BooleanVar()
+        self.compression_method_var = tk.StringVar()
+        self.replace_texture2d_var = tk.BooleanVar()
+        self.replace_textasset_var = tk.BooleanVar()
+        self.replace_mesh_var = tk.BooleanVar()
+        self.replace_all_var = tk.BooleanVar()
+        
+        # 设置默认值
+        self._set_default_values()
 
     def create_widgets(self):
         # 使用可拖动的 PanedWindow 替换固定的 grid 布局
@@ -1352,6 +1503,22 @@ class App(tk.Frame):
 
     def open_output_dir_in_explorer(self):
         self._open_directory_in_explorer(self.output_dir_var.get(), create_if_not_exist=True)
+    
+    def load_config_on_startup(self):
+        """应用启动时自动加载配置"""
+        if self.config_manager.load_config(self):
+            self.logger.log("配置加载成功")
+        else:
+            self.logger.log("未找到配置文件，使用默认设置")
+    
+    def save_current_config(self):
+        """保存当前配置到文件"""
+        if self.config_manager.save_config(self):
+            self.logger.log("配置保存成功")
+            messagebox.showinfo("成功", "配置已保存到 config.ini")
+        else:
+            self.logger.log("配置保存失败")
+            messagebox.showerror("错误", "配置保存失败")
     # --- 方法结束 ---
     
     def create_notebook(self, parent):
