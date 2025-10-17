@@ -7,36 +7,33 @@ from pathlib import Path
 from PIL import Image
 import shutil
 import re
+import tempfile
+import subprocess
 
-from utils import CRCUtils, no_log
+from utils import CRCUtils, no_log, get_skel_version_from_bytes
 
 def load_bundle(
     bundle_path: Path,
     log = no_log
-):
+) -> UnityPy.Environment | None:
     """
     尝试加载一个 Unity bundle 文件。
     如果直接加载失败，会尝试移除末尾的几个字节后再次加载。
     """
-    log(f"正在加载 bundle: {bundle_path.name}")
 
     # 1. 尝试直接加载
     try:
         env = UnityPy.load(str(bundle_path))
-        log("  ✅ 直接加载成功。")
         return env
     except Exception as e:
-        if 'insufficient space' in str(e):
-            log(f"  > 直接加载失败，将尝试作为CRC修正后的文件加载。")
-        else:
-            log(f"  > 直接加载失败: {e}。将尝试作为CRC修正后的文件加载。")
+        pass
 
     # 如果直接加载失败，读取文件内容到内存
     try:
         with open(bundle_path, "rb") as f:
             data = f.read()
     except Exception as e:
-        log(f"  ❌ 错误: 无法读取文件 '{bundle_path.name}': {e}")
+        log(f"  ❌ 无法在内存中读取文件 '{bundle_path.name}': {e}")
         return None
 
     # 定义加载策略：字节移除数量
@@ -48,14 +45,11 @@ def load_bundle(
             try:
                 trimmed_data = data[:-bytes_num]
                 env = UnityPy.load(trimmed_data)
-                log(f"  ✅ 尝试移除末尾{bytes_num}字节后成功加载")
                 return env
             except Exception as e:
-                log(f"  > 移除{bytes_num}字节后加载失败: {e}")
-        else:
-            log(f"  > 文件太小，无法移除{bytes_num}字节。")
+                pass
 
-    log(f"❌ 严重错误: 无法以任何方式加载 '{bundle_path.name}'。文件可能已损坏。")
+    log(f"❌ 无法以任何方式加载 '{bundle_path}'。文件可能已损坏。")
     return None
 
 def create_backup(
@@ -73,13 +67,11 @@ def create_backup(
             backup_path = original_path.with_name(f"orig_{original_path.name}")
         else:
             backup_path = original_path.with_suffix(original_path.suffix + '.bak')
-        
-        log(f"正在备份原始文件到: {backup_path.name}")
+
         shutil.copy2(original_path, backup_path)
-        log("✅ 备份已创建。")
         return True
     except Exception as e:
-        log(f"❌ 严重错误: 创建备份文件失败: {e}")
+        log(f"❌ 创建备份文件失败: {e}")
         return False
 
 def save_bundle(
@@ -97,8 +89,6 @@ def save_bundle(
                  - "none": 不进行压缩。
     """
     try:
-        log(f"\n正在将修改后的 bundle 保存到: {output_path.name}")
-
         save_kwargs = {}
         if compression == "original":
             log("压缩方式: 保持原始设置")
@@ -113,12 +103,91 @@ def save_bundle(
         with open(output_path, "wb") as f:
             f.write(env.file.save(**save_kwargs))
 
-        log(f"✅ Bundle 文件已成功保存到: {output_path}")
         return True
     except Exception as e:
         log(f"❌ 保存 bundle 文件到 '{output_path}' 时失败: {e}")
         log(traceback.format_exc())
         return False
+
+def upgrade_skel(
+    raw_skel_data: bytes,
+    spine_converter_path: Path,
+    target_spine_version: str,
+    log=no_log
+) -> tuple[bool, bytes]:
+    """
+    使用外部工具升级 .skel 文件。
+    返回 (是否成功, skel数据) 的元组。
+    """
+    # 检查spine_converter_path是否为空或不存在
+    if not spine_converter_path or not spine_converter_path.exists():
+        log(f"  > ⚠️ Spine转换器路径无效或不存在: {spine_converter_path}")
+        return False, raw_skel_data
+    
+    # 检查target_spine_version是否为空
+    if not target_spine_version or not target_spine_version.strip():
+        log(f"  > ⚠️ 目标Spine版本为空")
+        return False, raw_skel_data
+
+    temp_in_path, temp_out_path = None, None
+    try:
+        # 使用临时文件来进行转换
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".skel") as temp_in_file:
+            temp_in_file.write(raw_skel_data)
+            temp_in_path = Path(temp_in_file.name)
+            
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".skel") as temp_out_file:
+            temp_out_path = Path(temp_out_file.name)
+
+        # 构建并执行命令
+        command = [
+            str(spine_converter_path),
+            str(temp_in_path),
+            str(temp_out_path),
+            "-v",
+            target_spine_version
+        ]
+        log(f"    > 执行命令: {' '.join(map(str, command))}")
+        # 命令格式：SpineConverter.exe input.skel output.skel -v 4.2.33
+        
+        result = subprocess.run(
+            command, 
+            capture_output=True, 
+            text=True, 
+            check=True, 
+            encoding='utf-8', 
+            errors='ignore'
+        )
+        
+        if result.stdout:
+            log(f"    > Spine 转换器输出:\n{result.stdout}")
+        if result.stderr:
+            log(f"    > Spine 转换器错误输出:\n{result.stderr}")
+
+        # 读取转换后的内容
+        with open(temp_out_path, "rb") as f_out:
+            upgraded_data = f_out.read()
+        return True, upgraded_data
+
+    except FileNotFoundError:
+        log(f"    ❌ Spine 转换器未找到: {spine_converter_path}")
+        return False, raw_skel_data
+    except subprocess.CalledProcessError as e:
+        log(f"    ❌ Spine 转换器执行失败 (返回码: {e.returncode})")
+        if e.stdout: log(f"      > 输出: {e.stdout}")
+        if e.stderr: log(f"      > 错误: {e.stderr}")
+        return False, raw_skel_data
+    except Exception as e:
+        log(f"    ❌ 升级 .skel 文件时发生未知错误: {e}")
+        return False, raw_skel_data
+    finally:
+        # 清理临时文件
+        for p in [temp_in_path, temp_out_path]:
+            if p and p.exists():
+                try:
+                    p.unlink()
+                except OSError:
+                    log(f"    ❌ 无法删除临时文件: {p}")
 
 def process_asset_replacement(
     target_bundle_path: Path,
@@ -238,9 +307,6 @@ def process_asset_replacement(
             if not save_bundle(env, output_path, compression, log):
                 return False, "保存文件失败，操作已终止。"
             
-            log(f"  > 原始文件 (用于CRC校验): {target_bundle_path}")
-            log(f"  > 待修正文件: {output_path}")
-            
             is_crc_success = CRCUtils.manipulate_crc(target_bundle_path, output_path, enable_padding)
 
             if not is_crc_success:
@@ -272,6 +338,8 @@ def _b2b_replace(
     old_bundle_path: Path,
     new_bundle_path: Path,
     asset_types_to_replace: set,
+    spine_converter_path: Path | None = None,
+    target_spine_version: str | None = None,
     log = no_log,
 ):
     """
@@ -289,6 +357,15 @@ def _b2b_replace(
     new_env = load_bundle(new_bundle_path, log)
     if not new_env:
         return None, 0
+
+    # 判断Spine升级功能是否可用，以便在循环中快速检查
+    spine_upgrade_enabled = (
+        "TextAsset" in asset_types_to_replace # skel文件以TextAsset类型存储
+        and spine_converter_path
+        and spine_converter_path.exists()
+        and target_spine_version
+        and target_spine_version.count(".") == 2  # 目标版本必须是 "x.y.zz" 格式
+    )
 
     # 定义匹配策略
     # 每个策略是一个元组: (策略名, 获取资源key的函数)
@@ -309,22 +386,72 @@ def _b2b_replace(
         
         # 2. 根据当前策略从旧版 bundle 提取资源
         old_assets_map = {}
+        log("  > 从旧版 bundle 提取资源...")
         for obj in old_env.objects:
             if replace_all or (obj.type.name in asset_types_to_replace):
-                data = obj.read()
+                data = obj.read() # 资源数据
                 asset_key = key_func(obj, data)
-                content = data.image if obj.type.name == "Texture2D" else obj.get_raw_data()
-                old_assets_map[asset_key] = content
+                content = None # 替换后的资源内容
+                resource_name = getattr(data, 'm_Name', f"<{obj.type.name}资源>")
+
+                if obj.type.name == "Texture2D":
+                    content = data.image
+                elif obj.type.name == "TextAsset":
+                    # 从 m_Script 获取 TextAsset 的原始字节内容
+                    asset_bytes = data.m_Script.encode("utf-8", "surrogateescape")
+                    
+                    # 检查是否是需要升级的 .skel 文件
+                    is_skel = resource_name.lower().endswith('.skel')
+
+                    if is_skel and spine_upgrade_enabled:
+                        log(f"    > 检测到 .skel 文件: {resource_name}")
+                        try:
+                            # 检测 skel 的 spine 版本
+                            current_version = get_skel_version_from_bytes(asset_bytes, log)
+                            target_major_minor = ".".join(target_spine_version.split('.')[:2])
+                            
+                            # 仅在主版本或次版本不匹配时才尝试升级
+                            if current_version and not current_version.startswith(target_major_minor):
+                                log(f"      > spine 版本不匹配 (当前: {current_version}, 目标: {target_spine_version})。尝试升级...")
+
+                                # 无论成功与否，content 都会被赋予正确的数据（升级后的或原始的）
+                                skel_success, content = upgrade_skel(
+                                    raw_skel_data=asset_bytes,
+                                    spine_converter_path=spine_converter_path,
+                                    target_spine_version=target_spine_version,
+                                    log=log
+                                )
+                                if skel_success:
+                                    log(f"      > 成功升级 .skel 文件: {resource_name}")
+                                else:
+                                    log(f"      ❌ 升级 .skel 文件 '{resource_name}' 失败")
+                            else:
+                                log(f"      > 版本匹配或无法检测 ({current_version})，无需升级。")
+                                content = asset_bytes
+                        except Exception as e:
+                            log(f"      ❌ 错误: 检测或升级 .skel 文件 '{resource_name}' 时发生错误: {e}")
+                            content = asset_bytes # 出错时使用原始数据
+                    else:
+                        # 对于 .atlas 文件或无需/无法升级的 .skel 文件
+                        content = asset_bytes
+                else:
+                    # 为其他可能的类型提供备用方案
+                    if replace_all:
+                        content = obj.get_raw_data()
+
+                if content is not None:
+                    old_assets_map[asset_key] = content
         
         if not old_assets_map:
             log(f"  > ⚠️ 警告: 使用 '{name}' 策略未在旧版 bundle 中找到任何指定类型的资源。")
             continue
 
-        log(f"  > 使用 '{name}' 策略从旧版 bundle 提取了 {len(old_assets_map)} 个资源。")
+        log(f"  > 提取完成: 使用 '{name}' 策略从旧版 bundle 提取了 {len(old_assets_map)} 个资源。")
 
         # 3. 根据当前策略执行替换
         replacement_count = 0
         replaced_assets_log = []
+        log("  > 向新版 bundle 写入资源...")
         
         for obj in new_env.objects:
             if replace_all or (obj.type.name in asset_types_to_replace):
@@ -332,31 +459,32 @@ def _b2b_replace(
                 asset_key = key_func(obj, new_data)
 
                 if asset_key in old_assets_map:
-                    old_content = old_assets_map[asset_key]
+                    old_content = old_assets_map.pop(asset_key) # 使用pop避免重复替换
+                    # 安全地获取资源名称，避免某些类型没有 m_Name 属性
+                    resource_name = getattr(new_data, 'm_Name', f"<{obj.type.name}资源>")
                     try:
                         if obj.type.name == "Texture2D":
                             new_data.image = old_content
                             new_data.save()
+                        elif obj.type.name == "TextAsset":
+                            # old_content 是我们从旧包里提取的 bytes
+                            # 我们需要将其解码为字符串，然后赋给 m_Script 属性
+                            new_data.m_Script = old_content.decode("utf-8", "surrogateescape")
+                            new_data.save()
                         else:
                             obj.set_raw_data(old_content)
-                        
+
                         replacement_count += 1
-                        # 安全地获取资源名称，避免某些类型没有 m_Name 属性
-                        resource_name = getattr(new_data, 'm_Name', f"<{obj.type.name}资源>")
-                        log_msg = f"{resource_name} ({obj.type.name}, key: {asset_key})"
-                        replaced_assets_log.append(log_msg)
-                        log(f"  ✅ 成功替换: {log_msg}")
+                        replaced_assets_log.append(f"  - {resource_name} ({obj.type.name})")
 
                     except Exception as e:
-                        # 安全地获取资源名称，避免某些类型没有 m_Name 属性
-                        resource_name = getattr(new_data, 'm_Name', f"<{obj.type.name}资源>")
                         log(f"  ❌ 错误: 替换资源 '{resource_name}' ({obj.type.name}类型)时发生错误: {e}")
 
         # 4. 如果当前策略成功替换了至少一个资源，就结束
         if replacement_count > 0:
-            log(f"\n策略 '{name}' 成功替换了 {replacement_count} 个资源:")
+            log(f"\n✅ 策略 '{name}' 成功替换了 {replacement_count} 个资源:")
             for item in replaced_assets_log:
-                log(f"  - {item}")
+                log(item)
             return new_env, replacement_count
 
         log(f"  > 策略 '{name}' 未能匹配到任何资源。")
@@ -404,15 +532,15 @@ def process_bundle_to_bundle_replacement(
         return False, f"处理过程中发生严重错误:\n{e}"
 
 
-def get_filename_prefix(bundle_path: Path, log = no_log):
+def get_filename_prefix(filename: str, log = no_log) -> tuple[str | None, str]:
     """
     从旧版Mod文件名中提取用于搜索新版文件的前缀。
     返回 (前缀字符串, 状态消息) 的元组。
     """
     # 1. 通过日期模式确定文件名位置
-    date_match = re.search(r'\d{4}-\d{2}-\d{2}', bundle_path.name)
+    date_match = re.search(r'\d{4}-\d{2}-\d{2}', filename)
     if not date_match:
-        msg = f"无法在文件名 '{bundle_path.name}' 中找到日期模式 (YYYY-MM-DD)，无法确定用于匹配的文件前缀。"
+        msg = f"无法在文件名 '{filename}' 中找到日期模式 (YYYY-MM-DD)，无法确定用于匹配的文件前缀。"
         log(f"  > 失败: {msg}")
         return None, msg
 
@@ -421,7 +549,7 @@ def get_filename_prefix(bundle_path: Path, log = no_log):
     
     # 查找日期模式之前的最后一个连字符分隔的部分
     # 例如在 "...-textures-YYYY-MM-DD..." 中的 "textures"
-    before_date = bundle_path.name[:prefix_end_index]
+    before_date = filename[:prefix_end_index]
     
     # 如果日期模式前有连字符，尝试提取最后一个部分
     if before_date.endswith('-'):
@@ -438,9 +566,8 @@ def get_filename_prefix(bundle_path: Path, log = no_log):
         # 如果找到了资源类型，则前缀不应该包含这个部分
         search_prefix = before_date.replace(f'-{last_part}', '') + '-'
     else:
-        search_prefix = bundle_path.name[:prefix_end_index]
-    
-    log(f"  > 使用前缀: '{search_prefix}'")
+        search_prefix = filename[:prefix_end_index]
+
     return search_prefix, "前缀提取成功"
 
 
@@ -448,7 +575,7 @@ def find_new_bundle_path(
     old_mod_path: Path,
     game_resource_dir: Path | list[Path],
     log = no_log
-):
+) -> tuple[Path | None, str]:
     """
     根据旧版Mod文件，在游戏资源目录中智能查找对应的新版文件。
     支持单个目录路径或目录路径列表。
@@ -459,9 +586,10 @@ def find_new_bundle_path(
     log(f"正在为 '{old_mod_path.name}' 搜索对应文件...")
 
     # 1. 提取文件名前缀
-    prefix, prefix_message = get_filename_prefix(old_mod_path, log)
+    prefix, prefix_message = get_filename_prefix(str(old_mod_path.name), log)
     if not prefix:
         return None, prefix_message
+    log(f"  > 文件前缀: '{prefix}'")
     extension = '.bundle'
 
     # 2. 处理单个目录或目录列表
@@ -473,7 +601,7 @@ def find_new_bundle_path(
         log(f"  > 搜索目录列表: {[str(d) for d in search_dirs]}")
 
     # 3. 查找所有候选文件（前缀相同且扩展名一致）
-    candidates = []
+    candidates: list[Path] = []
     for search_dir in search_dirs:
         if search_dir.exists() and search_dir.is_dir():
             dir_candidates = [f for f in search_dir.iterdir() if f.is_file() and f.name.startswith(prefix) and f.suffix == extension]
@@ -505,7 +633,7 @@ def find_new_bundle_path(
 
     # 5. 遍历候选文件，找到第一个包含匹配贴图的
     for candidate_path in candidates:
-        log(f"    - 正在检查: {candidate_path.name}")
+        log(f"  - 正在检查: {candidate_path.name}")
         
         env = load_bundle(candidate_path, log)
         if not env: continue
@@ -529,24 +657,56 @@ def process_mod_update(
     perform_crc: bool = True,
     enable_padding: bool = False,
     compression: str = "lzma",
+    spine_converter_path: Path | None = None,
+    target_spine_version: str | None = None,
     log = no_log,
-):
+) -> tuple[bool, str]:
     """
     自动化Mod更新流程。
-    接收旧版Mod路径和新版资源路径，将生成文件保存在指定的output_dir下。
-    返回 (是否成功, 状态消息) 的元组。
+    
+    该函数是Mod更新工具的核心处理函数，负责将旧版Mod中的资源替换到新版游戏资源中，
+    并可选地进行CRC校验修正以确保文件兼容性。
+    
+    处理流程的主要阶段：
+    - Bundle-to-Bundle替换：将旧版Mod中的指定类型资源替换到新版资源文件中
+        - 支持替换Texture2D、TextAsset、Mesh等资源类型
+        - 可选地升级Spine动画资源的Skel版本
+    - CRC修正：根据选项决定是否对新生成的文件进行CRC校验修正
+    
+    Args:
+        old_mod_path: 旧版Mod文件的路径
+        new_bundle_path: 新版游戏资源文件的路径
+        output_dir: 输出目录，用于保存生成的更新后文件
+        asset_types_to_replace: 需要替换的资源类型集合（如 {"Texture2D", "TextAsset"}）
+        perform_crc: 是否执行CRC修正，默认为True
+        enable_padding: CRC修正时是否启用填充，默认为False
+        compression: 文件压缩方式，默认为"lzma"
+        spine_converter_path: Spine资源转换器路径，用于升级Skel版本。若不填写则跳过此步骤。
+        target_spine_version: 目标Spine版本，用于版本升级
+        log: 日志记录函数，默认为空函数
+    
+    Returns:
+        tuple[bool, str]: (是否成功, 状态消息) 的元组
     """
     try:
         log("="*50)
         log(f"  > 使用旧版 Mod: {old_mod_path.name}")
         log(f"  > 使用新版资源: {new_bundle_path.name}")
-        log(f"  > 使用工作目录: {output_dir}")
+        if spine_converter_path and spine_converter_path.exists():
+            log(f"  > 已启用 Spine 升级工具: {spine_converter_path.name}")
 
         # --- 1. 执行 B2B 替换 ---
-        log("\n--- 阶段 1: Bundle-to-Bundle 替换 ---")
+        log("\n--- Bundle-to-Bundle 替换 ---")
         
-        # 将资源类型集合传递给核心函数
-        modified_env, replacement_count = _b2b_replace(old_mod_path, new_bundle_path, asset_types_to_replace, log)
+        # 进行Bundle to Bundle 替换
+        modified_env, replacement_count = _b2b_replace(
+            old_bundle_path=old_mod_path, 
+            new_bundle_path=new_bundle_path, 
+            asset_types_to_replace=asset_types_to_replace, 
+            spine_converter_path=spine_converter_path,
+            target_spine_version=target_spine_version,
+            log = log
+        )
 
         if not modified_env:
             return False, "Bundle-to-Bundle 替换过程失败，请检查日志获取详细信息。"
@@ -560,13 +720,10 @@ def process_mod_update(
         output_path = output_dir / new_bundle_path.name
 
         if perform_crc:
-            log(f"\n--- 阶段 2: CRC修正 ---")
-            # 先保存未修正CRC的文件到最终路径
+            log(f"\n--- CRC 修正 ---")
+            # 先保存未修正CRC的文件
             if not save_bundle(modified_env, output_path, compression, log):
-                return False, "保存文件失败，操作已终止。"
-            
-            log(f"  > 原始文件 (用于CRC校验): {new_bundle_path}")
-            log(f"  > 待修正文件: {output_path}")
+                return False, "保存文件失败。"
             
             # 直接对最终文件进行CRC修正
             is_crc_success = CRCUtils.manipulate_crc(new_bundle_path, output_path, enable_padding)
@@ -581,9 +738,9 @@ def process_mod_update(
                 return False, f"CRC 修正失败。最终文件 '{output_path.name}' 未能生成。"
             
             log("✅ CRC 修正成功！")
-
+            
         else:
-            log(f"\n--- 阶段 2: 保存最终文件 ---")
+            log(f"\n--- 保存最终文件 ---")
             log(f"  > 准备直接保存最终文件...")
             if not save_bundle(modified_env, output_path, compression, log):
                 return False, "保存最终文件失败，操作已终止。"

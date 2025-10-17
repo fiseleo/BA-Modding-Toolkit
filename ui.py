@@ -265,7 +265,7 @@ def replace_file(source_path: Path,
 # --- 具体 Tab 实现 ---
 
 class ModUpdateTab(TabFrame):
-    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var, replace_all_var, compression_method_var, auto_detect_subdirs_var):
+    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var, replace_all_var, compression_method_var, auto_detect_subdirs_var, enable_spine_conversion_var, spine_converter_path_var, target_spine_version_var):
         self.old_mod_path: Path = None
         self.new_mod_path: Path = None 
         self.final_output_path: Path = None
@@ -284,6 +284,11 @@ class ModUpdateTab(TabFrame):
         self.game_resource_dir_var: Path = game_resource_dir_var
         self.output_dir_var: Path = output_dir_var
         self.auto_detect_subdirs = auto_detect_subdirs_var
+        
+        # 接收Spine相关的配置变量
+        self.enable_spine_conversion_var = enable_spine_conversion_var
+        self.spine_converter_path_var = spine_converter_path_var
+        self.target_spine_version_var = target_spine_version_var
 
         # 1. 旧版 Mod 文件
         _, self.old_mod_label = UIComponents.create_file_drop_zone(
@@ -443,6 +448,11 @@ class ModUpdateTab(TabFrame):
                 asset_types_to_replace.add("Mesh")
         
         # 传递 output_dir (基础输出目录) 和资源类型集合
+        # 根据设置决定是否传入spine_converter_path
+        spine_converter_path = None
+        if self.enable_spine_conversion_var.get():
+            spine_converter_path = Path(self.spine_converter_path_var.get())
+        
         success, message = processing.process_mod_update(
             old_mod_path = self.old_mod_path,
             new_bundle_path = self.new_mod_path,
@@ -451,6 +461,8 @@ class ModUpdateTab(TabFrame):
             perform_crc = self.enable_crc_correction.get(),
             asset_types_to_replace = asset_types_to_replace,
             compression = self.compression_method.get(),
+            spine_converter_path = spine_converter_path,
+            target_spine_version = self.target_spine_version_var.get(),
             log = self.logger.log
         )
         
@@ -1158,6 +1170,13 @@ class ConfigManager:
                 'replace_all': str(app_instance.replace_all_var.get())
             }
             
+            # 添加Spine转换器选项
+            self.config['SpineConverter'] = {
+                'spine_converter_path': app_instance.spine_converter_path_var.get(),
+                'enable_spine_conversion': str(app_instance.enable_spine_conversion_var.get()),
+                'target_spine_version': app_instance.target_spine_version_var.get()
+            }
+            
             # 写入文件
             with open(self.config_file, 'w', encoding='utf-8') as f:
                 self.config.write(f)
@@ -1206,6 +1225,15 @@ class ConfigManager:
                 if 'replace_all' in self.config['ResourceTypes']:
                     app_instance.replace_all_var.set(self.config['ResourceTypes']['replace_all'].lower() == 'true')
             
+            # 加载Spine转换器选项
+            if 'SpineConverter' in self.config:
+                if 'spine_converter_path' in self.config['SpineConverter']:
+                    app_instance.spine_converter_path_var.set(self.config['SpineConverter']['spine_converter_path'])
+                if 'enable_spine_conversion' in self.config['SpineConverter']:
+                    app_instance.enable_spine_conversion_var.set(self.config['SpineConverter']['enable_spine_conversion'].lower() == 'true')
+                if 'target_spine_version' in self.config['SpineConverter']:
+                    app_instance.target_spine_version_var.set(self.config['SpineConverter']['target_spine_version'])
+            
             return True
         except Exception as e:
             print(f"加载配置时出错: {e}")
@@ -1218,7 +1246,7 @@ class SettingsDialog(tk.Toplevel):
         self.app = app_instance # 保存主应用的引用
 
         self.title("高级设置")
-        self.geometry("550x380")
+        self.geometry("550x550")
         self.configure(bg=Theme.WINDOW_BG)
         self.transient(master) # 绑定到主窗口
         self.grab_set() # 模态化，阻止操作主窗口
@@ -1282,6 +1310,37 @@ class SettingsDialog(tk.Toplevel):
         
         # 设置行权重确保垂直对齐
         global_options_frame.rowconfigure(0, weight=1)
+        
+        # Spine 转换器设置
+        spine_frame = tk.LabelFrame(container, text="Spine 转换器设置", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
+        spine_frame.pack(fill=tk.X, pady=(15, 0))
+        
+        # Spine 转换选项
+        spine_options_frame = tk.Frame(spine_frame, bg=Theme.FRAME_BG)
+        spine_options_frame.pack(fill=tk.X)
+        
+        spine_conversion_checkbox = tk.Checkbutton(spine_options_frame, text="启用 Spine 转换", variable=self.app.enable_spine_conversion_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG)
+        spine_conversion_checkbox.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # 目标版本输入框
+        spine_version_label = tk.Label(spine_options_frame, text="目标版本:", font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL)
+        spine_version_label.pack(side=tk.LEFT, padx=(0, 5))
+        
+        spine_version_entry = tk.Entry(spine_options_frame, textvariable=self.app.target_spine_version_var, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1, width=10)
+        spine_version_entry.pack(side=tk.LEFT)
+
+        # Spine 转换器路径设置
+        spine_path_frame = tk.Frame(spine_frame, bg=Theme.FRAME_BG)
+        spine_path_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        spine_path_label = tk.Label(spine_path_frame, text="Spine 转换器路径:", font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL)
+        spine_path_label.pack(side=tk.LEFT, padx=(0, 5))
+        
+        spine_path_entry = tk.Entry(spine_path_frame, textvariable=self.app.spine_converter_path_var, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1)
+        spine_path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5), ipady=3)
+        
+        spine_path_browse_btn = tk.Button(spine_path_frame, text="浏览", command=self.select_spine_converter_path, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=5)
+        spine_path_browse_btn.pack(side=tk.LEFT, padx=(0, 5))
 
         # 初始化所有动态UI的状态
         self.toggle_padding_checkbox_state()
@@ -1346,6 +1405,25 @@ class SettingsDialog(tk.Toplevel):
             self._on_auto_detect_toggle()
             
             self.app.logger.log("已重置为默认设置")
+    
+    def select_spine_converter_path(self):
+        """选择Spine转换器路径"""
+        try:
+            current_path = Path(self.app.spine_converter_path_var.get())
+            if not current_path.exists():
+                current_path = Path.home()
+            
+            selected_file = filedialog.askopenfilename(
+                title="选择 Spine 转换器程序",
+                initialdir=str(current_path.parent) if current_path.parent.exists() else str(current_path),
+                filetypes=[("可执行文件", "*.exe"), ("所有文件", "*.*")]
+            )
+            
+            if selected_file:
+                self.app.spine_converter_path_var.set(str(Path(selected_file)))
+                self.app.logger.log(f"已设置 Spine 转换器路径: {selected_file}")
+        except Exception as e:
+            messagebox.showerror("错误", f"选择 Spine 转换器路径时发生错误:\n{e}")
 
 # --- 主应用 ---
 
@@ -1384,6 +1462,11 @@ class App(tk.Frame):
         self.replace_textasset_var.set(True)
         self.replace_mesh_var.set(True)
         self.replace_all_var.set(False)
+        
+        # Spine 转换器选项
+        self.spine_converter_path_var.set("")
+        self.enable_spine_conversion_var.set(False)
+        self.target_spine_version_var.set("4.2.33")
 
     def init_shared_variables(self):
         """初始化所有Tabs共享的变量。"""
@@ -1399,6 +1482,11 @@ class App(tk.Frame):
         self.replace_textasset_var = tk.BooleanVar()
         self.replace_mesh_var = tk.BooleanVar()
         self.replace_all_var = tk.BooleanVar()
+        
+        # Spine 转换器选项
+        self.spine_converter_path_var = tk.StringVar()
+        self.enable_spine_conversion_var = tk.BooleanVar()
+        self.target_spine_version_var = tk.StringVar()  # 添加目标Spine版本变量
         
         # 设置默认值
         self._set_default_values()
@@ -1565,7 +1653,10 @@ class App(tk.Frame):
                                   replace_mesh_var=self.replace_mesh_var,
                                   replace_all_var=self.replace_all_var,
                                   compression_method_var=self.compression_method_var,
-                                  auto_detect_subdirs_var=self.auto_detect_subdirs_var)
+                                  auto_detect_subdirs_var=self.auto_detect_subdirs_var,
+                                  enable_spine_conversion_var=self.enable_spine_conversion_var,
+                                  spine_converter_path_var=self.spine_converter_path_var,
+                                  target_spine_version_var=self.target_spine_version_var)
         self.notebook.add(update_tab, text="一键更新 Mod")
 
         # Tab: 批量更新
