@@ -26,30 +26,35 @@ The program contains multiple functional tabs:
 - **一键更新 Mod** (One-Click Mod Update): Single Mod file update functionality
 - **批量更新 Mod** (Batch Mod Update): Batch processing of multiple Mod files
 - **CRC 修正工具** (CRC Fix Tool): CRC checksum correction functionality
-- **资源文件夹替换** (Resource Folder Replacement): Replace resources in Bundle with files from folder
+- **资源文件夹替换** (Asset Folder Replacement): Replace asset files in Bundle with files from folder
 
-### Settings Management
-Click the **Settings** button at the top of the main interface to open the advanced settings window, where you can configure the following options:
+Click the **Settings** button at the top of the main interface to open the advanced settings window.
+The program can save user configurations to the `config.ini` file, which will be automatically restored upon next startup.
 
-#### Directory Settings
+### Directory Settings
 - **游戏根目录** (Game Root Directory): Set the game installation directory. The program can automatically detect resource subdirectories
 - **输出目录** (Output Directory): Set the save location for generated files
 
-#### Global Options
+### Global Options
 - **CRC 修正** (CRC Fix): Automatically corrects the Bundle file's CRC checksum, preventing the file from being rejected after modification
     - Currently only required for Steam version Mods, can be ignored for other versions
 - 添加私货: Add `0x08080808` before CRC correction. ~~You can ignore it lol~~
 - **创建备份** (Create Backup): Creates a backup of the original file before overwriting it
 - **压缩方式** (Compression Method): Select the compression method for Bundle files (LZMA, LZ4, Keep Original, No Compression)
 
-#### Resource Type Options
+### Resource Type Options
 - **Texture2D**: Illustrations, textures, image resources
 - **TextAsset**: `.atlas`, `.skel` files, Spine animation skeleton files
 - **Mesh**: 3D model resources
 - **ALL**: All types of resources (experimental, not recommended)
 
-### Local Settings Save
-The program can save user configurations to the `config.ini` file, which will be automatically restored upon next startup.
+### Spine Converter (Experimental Feature)
+Uses a third-party program to convert older Spine 3.8 format to the currently supported 4.2 format.
+- You need to download the third-party Spine converter program yourself. BAMT only provides the conversion function, not the program itself.
+- Download URL: [SpineSkeletonDataConverter](https://github.com/wang606/SpineSkeletonDataConverter/releases)
+- Configure the path to `SpineSkeletonDataConverter.exe` in the settings interface, and check the "启用 Spine 转换" (Enable Spine Conversion) option.
+
+**Note**: This is an experimental feature, not all mods can be successfully upgraded, suitable only for advanced users.
 
 ## How to Use
 
@@ -122,6 +127,7 @@ BA-Modding-Toolkit/
 - [Deathemonic](https://github.com/Deathemonic): Patching CRC with [BA-CY](https://github.com/Deathemonic/BA-CY).
 - [kalina](https://github.com/kalinaowo): Creating the prototype of the `CRCUtils` class, the starting point of BAMT.
 - [afiseleo](https://github.com/fiseleo): Helping with the CLI version.
+- [wang606](https://github.com/wang606): Spine version conversion feature based on [SpineSkeletonDataConverter](https://github.com/wang606/SpineSkeletonDataConverter) project.
 
 This project uses the following excellent 3rd-party libraries:
 
