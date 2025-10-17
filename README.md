@@ -6,7 +6,7 @@
 
 [简体中文](README_zh-CN.md) | English
 
-A toolkit for automating the creation and updating of Unity game Mod Bundle files.
+A toolkit for automating the creation and updating of Blue Archive Mod Bundle files.
 
 ## Getting Started
 
@@ -21,54 +21,82 @@ python main.pyw
 ```
 Alternatively, you can double-click the `main.pyw` file to launch the program.
 
+## Program Interface Description
+The program contains multiple functional tabs:
+- **一键更新 Mod** (One-Click Mod Update): Single Mod file update functionality
+- **批量更新 Mod** (Batch Mod Update): Batch processing of multiple Mod files
+- **CRC 修正工具** (CRC Fix Tool): CRC checksum correction functionality
+- **资源文件夹替换** (Resource Folder Replacement): Replace resources in Bundle with files from folder
+
+### Settings Management
+Click the **Settings** button at the top of the main interface to open the advanced settings window, where you can configure the following options:
+
+#### Directory Settings
+- **游戏根目录** (Game Root Directory): Set the game installation directory. The program can automatically detect resource subdirectories
+- **输出目录** (Output Directory): Set the save location for generated files
+
+#### Global Options
+- **CRC 修正** (CRC Fix): Automatically corrects the Bundle file's CRC checksum, preventing the file from being rejected after modification
+    - Currently only required for Steam version Mods, can be ignored for other versions
+- 添加私货: Add `0x08080808` before CRC correction. ~~You can ignore it lol~~
+- **创建备份** (Create Backup): Creates a backup of the original file before overwriting it
+- **压缩方式** (Compression Method): Select the compression method for Bundle files (LZMA, LZ4, Keep Original, No Compression)
+
+#### Resource Type Options
+- **Texture2D**: Illustrations, textures, image resources
+- **TextAsset**: `.atlas`, `.skel` files, Spine animation skeleton files
+- **Mesh**: 3D model resources
+- **ALL**: All types of resources (experimental, not recommended)
+
+### Local Settings Save
+The program can save user configurations to the `config.ini` file, which will be automatically restored upon next startup.
+
 ## How to Use
 
 ![How to update a mod with BAMT GUI](assets/help/gui-help-mod-update-en.png)
 
-- Set the "游戏资源目录" (Game Asset Directory) (where the original Bundle files are located) and the "输出目录" (Output Directory).
-
-- Set the "CRC 修正" (CRC Fix) option to enable CRC checksum correction.
-    - If you are making a mod for the Steam version of the game, this step is required. Otherwise, you can ignore it.
-
-- Set the "创建备份" (Create Backup) option to enable backup creation before overwriting the original files.
+First, open the Settings window and configure the game root directory and output directory.
+If you are updating or creating a Mod for the Steam version, check the "CRC 修正" (CRC Fix) option.
+It is recommended to check the "创建备份" (Create Backup) option to prevent accidental overwriting of original files.
+Click the "Save" button to save the configuration, which will be automatically restored upon next startup.
 
 ### 一键更新 Mod (One-Click Mod Update)
-1. Drag and drop into "旧版 Mod Bundle 文件" (Old Mod Bundle File) area, or browse to select the old Mod Bundle file you want to update.
-2. The program will automatically find the corresponding target Bundle file in the game asset directory.
-3. Check the asset types you want to replace:
-    - Texture2D (textures)
-    - TextAsset (`.atlas`, `.skel` files, used for Spine animations)
-    - Mesh (3D models)
-4. Click the "开始一键更新" (Start One-Click Update) button.
-5. (Optional) After a successful update, click "覆盖原文件" (Overwrite Original File) to apply the changes. Please ensure the "创建备份" (Create Backup) option is enabled to prevent data loss.
+1. Drag and drop or browse to select the old Mod Bundle file that needs to be updated
+2. The program will automatically find the corresponding target Bundle file in the resource directory
+3. Check the resource types that need to be replaced in the settings window
+4. Click the "开始一键更新" (Start One-Click Update) button, the program will automatically process and generate the updated Bundle file
+5. (Optional) After success, click "覆盖原文件" (Overwrite Original File) to apply the modifications. Please ensure the "创建备份" (Create Backup) option is enabled to prevent risks.
 
-This feature can also be used to port mods between different platforms, as long as you select the Bundle file from the target platform in Step 2.
+This feature can also be used to port mods between different platforms, just select the Bundle file from the corresponding platform in step 2.
+
+### 批量更新 Mod (Batch Mod Update)
+1. Drag and drop or browse to select a folder containing multiple Mod files, or directly drag and drop multiple Mod files
+    - The 4 buttons below are: 添加文件 (Add a File), 添加文件夹 (Add a Folder), 移除选中 (Remove Selected), 清空列表 (Clear List).
+2. The program will automatically identify and list all processable Mod files
+3. Configure resource types and other options in the settings window
+4. Click the "开始批量更新" (Start Batch Update) button, the program will process all selected Mod files in sequence
 
 ### CRC 修正工具 (CRC Fix Tool)
-1. Drag and drop or browse to select the target Bundle file to be fixed.
-2. Click the "运行 CRC 修正" (Run CRC Fix) button to automatically correct the Bundle file's CRC checksum.
-3. (Optional) After a successful fix, click "替换原始文件" (Replace Original File) to apply the changes. Please ensure the "创建备份" (Create Backup) option is enabled.
+1. Drag and drop or browse to select the target Bundle file that needs to be modified
+2. The program will automatically find the corresponding original Bundle file in the resource directory
+3. Click the "运行 CRC 修正" (Run CRC Fix) button: automatically corrects the Bundle file's CRC checksum
+4. (Optional) After success, click "替换原始文件" (Replace Original File) to apply the modifications. Please ensure the "创建备份" (Create Backup) option is enabled to prevent risks.
 
-The "计算CRC值" (Calculate CRC Value) button can be used to manually check a file's CRC checksum.
+The "计算CRC值" (Calculate CRC Value) button can be used to manually view the CRC checksum of a single file or two files.
 
-### PNG 文件夹替换 (PNG Replacement)
-1. Drag and drop or browse to select the folder containing the new PNG image files.
-    - Make sure the filenames of the new PNG files match the textures in the target Bundle file.
-2. Drag and drop or browse to select the target Bundle file to be modified.
-3. Click the "开始替换" (Start Replacement) button to perform the texture replacement.
-4. (Optional) After a successful replacement, click "覆盖原文件" (Overwrite Original File) to apply the changes. Please ensure the "创建备份" (Create Backup) option is enabled.
+### 资源文件夹替换 (Resource Folder Replacement)
+1. Drag and drop or browse to select the folder containing replacement resources
+    - Supported file types: `.png` (textures), `.skel`, `.atlas` (Spine animation files)
+    - Ensure resource filenames match the resource names in the target Bundle file
+2. Drag and drop or browse to select the target Bundle file that needs to be modified
+3. Click the "开始替换" (Start Replacement) button: performs the resource replacement operation
+4. (Optional) After success, click "覆盖原文件" (Overwrite Original File) to apply the modifications. Please ensure the "创建备份" (Create Backup) option is enabled to prevent risks.
 
-This feature is intended for creating new mods.
-
-### Options Description
-- CRC 修正 (CRC Fix): Automatically corrects the Bundle file's CRC checksum, which prevents the game from rejecting the modified file.
-    - This step is currently only required for mods on the Steam version of the game and can be ignored for other versions (like AndroidGB and AndroidJP).
-- 添加私货: ~~Adds `0x08080808` before the CRC fix.~~ Ignore it.
-- 创建备份 (Create Backup): Creates a backup of the original file before overwriting it.
+This feature is for creating new Mods, such as quickly packaging modified resources into Bundle files.
 
 ## Developing
 
-The author's programming skills are limited, any contributions or suggestions are welcome.
+The author's programming skills are limited, welcome to provide suggestions or issues, and also welcome to contribute code to improve this project.
 
 You can add `BA-Modding-Toolkit` code (mainly `processing.py` and `utils.py`) to your project or modify the existing code to implement custom Mod creation and update functionality.
 
@@ -84,11 +112,19 @@ BA-Modding-Toolkit/
 ├── processing.py     # Core processing logic
 ├── utils.py          # Utility classes and helper functions
 ├── requirements.txt  # Python dependency list
+├── config.ini        # Local configuration file (automatically generated)
 ├── assets/           # Project asset folder
 └── README.md         # Project documentation (this file)
 ```
 
 ## Thanks
-- Deathemonic: Patching CRC with [BA-CY](https://github.com/Deathemonic/BA-CY).
-- [kalinaowo](https://github.com/kalinaowo): Prototype of the `CRCUtils` class, the starting point of BAMT.
-- [fiseleo](https://github.com/fiseleo): Help with the CLI version.
+
+- [Deathemonic](https://github.com/Deathemonic): Patching CRC with [BA-CY](https://github.com/Deathemonic/BA-CY).
+- [kalina](https://github.com/kalinaowo): Creating the prototype of the `CRCUtils` class, the starting point of BAMT.
+- [afiseleo](https://github.com/fiseleo): Helping with the CLI version.
+
+This project uses the following excellent 3rd-party libraries:
+
+- [UnityPy](https://github.com/K0lb3/UnityPy): Core library for parsing and manipulating Unity Bundle files
+- [Pillow](https://python-pillow.org/): Used for processing texture resources in the game
+- [tkinterdnd2](https://github.com/pmgagne/tkinterdnd2): Adds drag-and-drop functionality support for Tkinter

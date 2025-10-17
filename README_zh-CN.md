@@ -4,7 +4,7 @@
 
 简体中文 | [English](README.md)
 
-一个用于自动化制作、更新 Unity 游戏 Mod Bundle 文件的工具集。
+一个用于自动化制作、更新 Blue Archive 的 Mod Bundle 文件的工具集。
 
 ## 启动程序
 
@@ -19,53 +19,81 @@ python main.pyw
 ```
 或者直接双击 `main.pyw` 文件启动
 
+## 程序界面说明
+程序包含多个功能标签页：
+- **一键更新 Mod**：单个 Mod 文件的更新功能
+- **批量更新 Mod**：批量处理多个 Mod 文件
+- **CRC 修正工具**：CRC 校验值修正功能
+- **资源文件夹替换**：从文件夹替换 Bundle 中的同名资源
+
+### 设置管理
+点击主界面上方的 **Settings** 按钮打开高级设置窗口，可以配置以下选项：
+
+#### 目录设置
+- **游戏根目录**：设置游戏安装目录。程序能够自动检测资源子目录
+- **输出目录**：设置生成文件的保存位置
+
+#### 全局选项
+- **CRC 修正**：自动修正 Bundle 文件的 CRC 校验值，防止文件被修改后无法运行
+    - 当前仅 Steam 版本 Mod 需要此步骤，其他版本 Mod 可忽略
+- 添加私货: 在CRC修正之前添加`0x08080808`。~~确实是私货，不选也没有影响~~
+- **创建备份**：在覆盖原文件之前创建原文件的备份
+- **压缩方式**：选择 Bundle 文件的压缩方式（LZMA、LZ4、保持原始、不压缩）
+
+#### 资源类型选项
+- **Texture2D**：立绘、贴图、纹理资源
+- **TextAsset**：`.atlas`、`.skel`文件，Spine使用的骨骼文件
+- **Mesh**：3D 模型资源
+- **ALL**：所有类型的资源（实验性，不推荐）
+
+### 本地设置保存
+程序可以将用户配置保存到 `config.ini` 文件，下次启动时会自动恢复之前的设置。
+
 ## 使用方法
 
 ![How to update a mod with BAMT GUI](assets/help/gui-help-mod-update-en.png)
 
-
-- 设定游戏资源目录（即存放 Bundle 文件的目录）与输出目录
-- 开启 CRC 修正选项，自动修正 Bundle 文件的 CRC 校验值
-    - 当前仅 Steam 版本 Mod 需要此步骤，其他版本 Mod 可忽略
-- 开启创建备份选项，在覆盖原文件之前创建原文件的备份。
+首先请打开 Settings 窗口，配置好游戏根目录和输出目录。
+如果是为Steam版更新或制作Mod，请勾选"CRC 修正"选项。
+建议勾选"创建备份"选项，以防止意外覆盖原文件。
+点击"Save"按钮保存配置，下次启动时会自动恢复之前的设置。
 
 ### 一键更新 Mod
 1. 拖放或浏览选择需要更新的旧版 Mod Bundle 文件
 2. 程序会自动根据资源目录寻找对应目标 Bundle 文件
-3. 勾选需要替换的资源类型
-    - Texture2D（贴图纹理）
-    - TextAsset（`.atlas`、`.skel`文件，Spine使用的骨骼文件）
-    - Mesh（3D模型）
-4. 点击"开始一键更新"按钮
-5. （可选）成功后点击"覆盖原文件"应用修改。请确保开启了“创建备份”选项以防止风险。
+3. 在设置窗口中勾选需要替换的资源类型
+4. 点击"开始一键更新"按钮，程序会自动处理并生成更新后的 Bundle 文件
+5. （可选）成功后点击"覆盖原文件"应用修改。请确保开启了"创建备份"选项以防止风险。
 
 此功能同样适用于在不同平台间移植 Mod，只需在第二步中选择来自对应平台的 Bundle 文件即可。
 
+### 批量更新 Mod
+1. 拖放或浏览选择包含多个 Mod 文件的文件夹，或直接拖放多个 Mod 文件
+2. 程序会自动识别并列出所有可处理的 Mod 文件
+3. 在设置窗口中配置资源类型等选项
+4. 点击"开始批量更新"按钮，程序会依次处理所有选中的 Mod 文件
+
 ### CRC 修正工具
 1. 拖放或浏览选择需要修改的目标 Bundle 文件
-2. 点击"运行 CRC 修正"按钮：自动修正 Bundle 文件的 CRC 校验值
-3. （可选）成功后点击"替换原始文件"应用修改。请确保开启了“创建备份”选项以防止风险。
+2. 程序会自动根据资源目录寻找对应的原版 Bundle 文件
+3. 点击"运行 CRC 修正"按钮：自动修正 Bundle 文件的 CRC 校验值
+4. （可选）成功后点击"替换原始文件"应用修改。请确保开启了"创建备份"选项以防止风险。
 
-“计算CRC值” 按钮可用于手动查看文件的 CRC 校验值。
+"计算CRC值" 按钮可用于手动查看单个或两个文件的 CRC 校验值。
 
-### PNG 文件夹替换
-1. 拖放或浏览选择包含需要替换的 PNG 图片文件所在的文件夹。
-    - 确保新 PNG 文件的文件名与目标 Bundle 文件中的贴图文件名匹配。
+### 资源文件夹替换
+1. 拖放或浏览选择包含替换资源的文件夹
+    - 支持的文件类型：`.png`（贴图）、`.skel`、`.atlas`（Spine动画文件）
+    - 确保资源文件名与目标 Bundle 文件中的资源名匹配
 2. 拖放或浏览选择需要修改的目标 Bundle 文件
-3. 点击"开始替换"按钮：执行贴图替换操作
-4. （可选）成功后点击"覆盖原文件"应用修改。请确保开启了“创建备份”选项以防止风险。
+3. 点击"开始替换"按钮：执行资源替换操作
+4. （可选）成功后点击"覆盖原文件"应用修改。请确保开启了"创建备份"选项以防止风险。
 
-此功能适用于制作新的 Mod。
-
-### 选项说明
-- CRC 修正：自动修正 Bundle 文件的 CRC 校验值，防止文件被修改后无法运行。
-    - 当前仅 Steam 版本 Mod 需要此步骤，其他版本 Mod 可忽略。
-- ~~添加私货：在 CRC 修正前添加`0x08080808`，没用~~
-- 创建备份：在覆盖原文件之前创建原文件的备份。
+此功能适用于制作新的 Mod，例如快速将修改后的资源打包到 Bundle 文件中。
 
 ## 开发
 
-作者的编程水平有限，欢迎贡献代码或提出建议。
+作者的编程水平有限，欢迎提出建议或是issue，也欢迎贡献代码以改进本项目。
 
 您可以将 `BA-Modding-Toolkit` 的代码（主要是 `processing.py` 与 `utils.py`）加入您的项目中或是进行修改，以实现自定义的 Mod 制作和更新功能。
 
@@ -81,12 +109,19 @@ BA-Modding-Toolkit/
 ├── processing.py     # 核心处理逻辑
 ├── utils.py          # 工具类和辅助函数
 ├── requirements.txt  # Python依赖列表
+├── config.ini        # 本地配置文件（自动生成）
 ├── assets/           # 项目资源文件夹
 └── README_zh-CN.md   # 项目说明文档（简体中文）
 ```
 
 ## 鸣谢
 
-- Deathemonic: Patching CRC with [BA-CY](https://github.com/Deathemonic/BA-CY).
-- [kalinaowo](https://github.com/kalinaowo): The prototype of the `CRCUtils` class, the starting point of BAMT.
-- [fiseleo](https://github.com/fiseleo): Help with the CLI version.
+- [Deathemonic](https://github.com/Deathemonic): Patching CRC with [BA-CY](https://github.com/Deathemonic/BA-CY).
+- [kalina](https://github.com/kalinaowo): Creating the prototype of the `CRCUtils` class, the starting point of BAMT.
+- [afiseleo](https://github.com/fiseleo): Helping with the CLI version.
+
+本项目使用了以下优秀的第三方库：
+
+- [UnityPy](https://github.com/K0lb3/UnityPy): 用于解析和操作 Unity Bundle 文件的核心库
+- [Pillow](https://python-pillow.org/): 用于处理游戏中的纹理资源
+- [tkinterdnd2](https://github.com/pmgagne/tkinterdnd2): 为 Tkinter 添加拖放功能支持
