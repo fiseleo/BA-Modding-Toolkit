@@ -196,6 +196,8 @@ def process_asset_replacement(
     perform_crc: bool = True,
     enable_padding: bool = False,
     compression: str = "lzma",
+    spine_converter_path: Path | None = None,
+    target_spine_version: str | None = None,
     log = no_log
 ):
     """
@@ -203,13 +205,36 @@ def process_asset_replacement(
     支持替换 .png, .skel, .atlas 文件。
     - .png 文件将替换同名的 Texture2D 资源 (文件名不含后缀)。
     - .skel 和 .atlas 文件将替换同名的 TextAsset 资源 (文件名含后缀)。
-    此函数将生成的文件保存在工作目录中，以便后续进行“覆盖原文件”操作。
+    可选地升级Spine动画资源的Skel版本。
+    此函数将生成的文件保存在工作目录中，以便后续进行"覆盖原文件"操作。
     返回 (是否成功, 状态消息) 的元组。
+    
+    Args:
+        target_bundle_path: 目标Bundle文件的路径
+        asset_folder: 包含替换资源的文件夹路径
+        output_dir: 输出目录，用于保存生成的更新后文件
+        perform_crc: 是否执行CRC修正，默认为True
+        enable_padding: CRC修正时是否启用填充，默认为False
+        compression: 文件压缩方式，默认为"lzma"
+        spine_converter_path: Spine资源转换器路径，用于升级Skel版本。若不填写则跳过此步骤。
+        target_spine_version: 目标Spine版本，用于版本升级
+        log: 日志记录函数，默认为空函数
     """
     try:
         env = load_bundle(target_bundle_path, log)
         if not env:
             return False, "无法加载目标 Bundle 文件，即使在尝试移除潜在的 CRC 补丁后也是如此。请检查文件是否损坏。"
+        
+        # 判断Spine升级功能是否可用，以便在循环中快速检查
+        spine_upgrade_enabled = (
+            spine_converter_path
+            and spine_converter_path.exists()
+            and target_spine_version
+            and target_spine_version.count(".") == 2  # 目标版本必须是 "x.y.zz" 格式
+        )
+        
+        if spine_upgrade_enabled:
+            log(f"  > 已启用 Spine 升级功能，目标版本: {target_spine_version}")
         
         # 使用字典来优化查找，按资源类型分类
         tasks_by_type = {
@@ -271,7 +296,38 @@ def process_asset_replacement(
                         with open(file_path, "rb") as f:
                             content_bytes = f.read()
                         
-                        # 【修正】将读取到的 bytes 解码为 str，并使用正确的 .m_Script 属性
+                        # 检查是否是需要升级的 .skel 文件
+                        is_skel = data.m_Name.lower().endswith('.skel')
+                        
+                        if is_skel and spine_upgrade_enabled:
+                            log(f"    > 检测到 .skel 文件: {data.m_Name}")
+                            try:
+                                # 检测 skel 的 spine 版本
+                                current_version = get_skel_version_from_bytes(content_bytes, log)
+                                target_major_minor = ".".join(target_spine_version.split('.')[:2])
+                                
+                                # 仅在主版本或次版本不匹配时才尝试升级
+                                if current_version and not current_version.startswith(target_major_minor):
+                                    log(f"      > spine 版本不匹配 (当前: {current_version}, 目标: {target_spine_version})。尝试升级...")
+
+                                    # 无论成功与否，content_bytes 都会被赋予正确的数据（升级后的或原始的）
+                                    skel_success, upgraded_content = upgrade_skel(
+                                        raw_skel_data=content_bytes,
+                                        spine_converter_path=spine_converter_path,
+                                        target_spine_version=target_spine_version,
+                                        log=log
+                                    )
+                                    if skel_success:
+                                        log(f"      > 成功升级 .skel 文件: {data.m_Name}")
+                                        content_bytes = upgraded_content
+                                    else:
+                                        log(f"      ❌ 升级 .skel 文件 '{data.m_Name}' 失败，使用原始文件")
+                                else:
+                                    log(f"      > 版本匹配或无法检测 ({current_version})，无需升级。")
+                            except Exception as e:
+                                log(f"      ❌ 错误: 检测或升级 .skel 文件 '{data.m_Name}' 时发生错误: {e}")
+                        
+                        # 将读取到的 bytes 解码为 str，并使用正确的 .m_Script 属性
                         # 使用 "surrogateescape" 错误处理程序以确保二进制数据也能被正确处理
                         data.m_Script = content_bytes.decode("utf-8", "surrogateescape")
                         

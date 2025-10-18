@@ -50,7 +50,7 @@ The program can save user configurations to the `config.ini` file, which will be
 
 ### Spine Converter (Experimental Feature)
 Uses a third-party program to convert older Spine 3.8 format to the currently supported 4.2 format.
-- You need to download the third-party Spine converter program yourself. BAMT only provides the conversion function, not the program itself.
+- You need to download the third-party Spine converter program yourself. BAMT only calls the program to convert Spine files, not provides the program itself.
 - Download URL: [SpineSkeletonDataConverter](https://github.com/wang606/SpineSkeletonDataConverter/releases)
 - Configure the path to `SpineSkeletonDataConverter.exe` in the settings interface, and check the "启用 Spine 转换" (Enable Spine Conversion) option.
 
@@ -61,8 +61,11 @@ Uses a third-party program to convert older Spine 3.8 format to the currently su
 ![How to update a mod with BAMT GUI](assets/help/gui-help-mod-update-en.png)
 
 First, open the Settings window and configure the game root directory and output directory.
+
 If you are updating or creating a Mod for the Steam version, check the "CRC 修正" (CRC Fix) option.
+
 It is recommended to check the "创建备份" (Create Backup) option to prevent accidental overwriting of original files.
+
 Click the "Save" button to save the configuration, which will be automatically restored upon next startup.
 
 ### 一键更新 Mod (One-Click Mod Update)

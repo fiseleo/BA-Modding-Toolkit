@@ -517,7 +517,7 @@ class ModUpdateTab(TabFrame):
 
 
 class AssetReplacementTab(TabFrame):
-    def create_widgets(self, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, compression_method_var):
+    def create_widgets(self, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, compression_method_var, enable_spine_conversion_var, spine_converter_path_var, target_spine_version_var):
         self.bundle_path: Path = None
         self.folder_path: Path = None
         self.final_output_path: Path = None
@@ -528,6 +528,11 @@ class AssetReplacementTab(TabFrame):
         self.enable_crc_correction = enable_crc_correction_var
         self.create_backup = create_backup_var
         self.compression_method = compression_method_var
+        
+        # 接收Spine相关的配置变量
+        self.enable_spine_conversion_var = enable_spine_conversion_var
+        self.spine_converter_path_var = spine_converter_path_var
+        self.target_spine_version_var = target_spine_version_var
 
         # 1. 资源文件夹
         _, self.folder_label = UIComponents.create_folder_drop_zone(
@@ -539,7 +544,10 @@ class AssetReplacementTab(TabFrame):
             self, "目标 Bundle 文件", self.drop_bundle, self.browse_bundle
         )
         
-        # 3. 操作按钮区域
+        # Spine转换器选项（使用Settings窗口的全局设置）
+        # 这里不显示UI控件，直接使用从Settings传入的共享变量
+        
+        # 4. 操作按钮区域
         action_button_frame = tk.Frame(self)
         action_button_frame.pack(fill=tk.X, pady=10)
         action_button_frame.grid_columnconfigure((0, 1), weight=1)
@@ -598,6 +606,11 @@ class AssetReplacementTab(TabFrame):
         self.logger.log("开始从资源文件夹替换...")
         self.logger.status("正在处理中，请稍候...")
         
+        # 根据设置决定是否传入spine_converter_path
+        spine_converter_path = None
+        if self.enable_spine_conversion_var.get():
+            spine_converter_path = Path(self.spine_converter_path_var.get())
+        
         success, message = processing.process_asset_replacement(
             target_bundle_path = self.bundle_path,
             asset_folder = self.folder_path,
@@ -605,6 +618,8 @@ class AssetReplacementTab(TabFrame):
             perform_crc = self.enable_crc_correction.get(),
             enable_padding = self.enable_padding.get(),
             compression = self.compression_method.get(),
+            spine_converter_path = spine_converter_path,
+            target_spine_version = self.target_spine_version_var.get(),
             log = self.logger.log
         )
         
@@ -636,6 +651,8 @@ class AssetReplacementTab(TabFrame):
             return
         
         self.run_in_thread(self.replace_original)
+
+
 
     def replace_original(self):
         """执行实际的文件替换操作（在线程中）"""
@@ -1688,7 +1705,10 @@ class App(tk.Frame):
                                     enable_padding_var=self.enable_padding_var,
                                     enable_crc_correction_var=self.enable_crc_correction_var,
                                     create_backup_var=self.create_backup_var,
-                                    compression_method_var=self.compression_method_var)
+                                    compression_method_var=self.compression_method_var,
+                                    enable_spine_conversion_var=self.enable_spine_conversion_var,
+                                    spine_converter_path_var=self.spine_converter_path_var,
+                                    target_spine_version_var=self.target_spine_version_var)
         self.notebook.add(asset_tab, text="资源文件夹替换")
 
 if __name__ == "__main__":

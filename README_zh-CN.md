@@ -48,7 +48,7 @@ python main.pyw
 
 ### Spine 转换器（实验性功能）
 使用第三方程序，将较老的 Spine 3.8 格式转换为当前版本支持的 4.2 格式。
-- 你需要自行下载第三方 Spine 转换器程序，BAMT 仅提供调用转换功能，不包含该程序本体。
+- 请自行下载第三方 Spine 转换器程序，BAMT 仅提供调用程序转换功能，不包含该程序本体。
 - 下载地址：[SpineSkeletonDataConverter](https://github.com/wang606/SpineSkeletonDataConverter/releases)
 - 在设置界面配置`SpineSkeletonDataConverter.exe`程序的路径，并勾选"启用 Spine 转换"选项。
 
@@ -59,8 +59,11 @@ python main.pyw
 ![How to update a mod with BAMT GUI](assets/help/gui-help-mod-update-en.png)
 
 首先请打开 Settings 窗口，配置好游戏根目录和输出目录。
+
 如果是为Steam版更新或制作Mod，请勾选"CRC 修正"选项。
+
 建议勾选"创建备份"选项，以防止意外覆盖原文件。
+
 点击"Save"按钮保存配置，下次启动时会自动恢复之前的设置。
 
 ### 一键更新 Mod
