@@ -109,6 +109,53 @@ def save_bundle(
         log(traceback.format_exc())
         return False
 
+def _save_and_finalize_bundle(
+    env: UnityPy.Environment,
+    output_path: Path,
+    original_bundle_path: Path,
+    perform_crc: bool,
+    enable_padding: bool,
+    compression: str,
+    log=no_log,
+) -> tuple[bool, str]:
+    """
+    一个辅助函数，用于保存bundle并根据需要执行CRC修正。
+    封装了保存、CRC修正的逻辑。
+
+    Returns:
+        (是否成功, 状态消息) 的元组。
+    """
+    if perform_crc:
+        log(f"\n--- CRC 修正 ---")
+        log(f"  > 准备保存文件并修正CRC...")
+        
+        # 1. 先保存文件
+        if not save_bundle(env, output_path, compression, log):
+            return False, "保存临时文件失败，操作已终止。"
+        
+        # 2. 对保存后的文件进行CRC修正
+        is_crc_success = CRCUtils.manipulate_crc(original_bundle_path, output_path, enable_padding)
+
+        if not is_crc_success:
+            # 如果修正失败，清理掉生成的坏文件
+            if output_path.exists():
+                try:
+                    output_path.unlink()
+                    log(f"  > 已删除CRC修正失败的文件: {output_path}")
+                except OSError as e:
+                    log(f"  > 警告: 清理CRC修正失败的文件时出错: {e}")
+            return False, f"CRC 修正失败。最终文件 '{output_path.name}' 未能生成。"
+        
+        log("✅ CRC 修正成功！")
+        return True, "文件保存和CRC修正成功。"
+
+    else:
+        log(f"\n--- 保存最终文件 ---")
+        log(f"  > 准备直接保存最终文件...")
+        if not save_bundle(env, output_path, compression, log):
+            return False, "保存最终文件失败，操作已终止。"
+        return True, "文件保存成功。"
+
 def upgrade_skel(
     raw_skel_data: bytes,
     spine_converter_path: Path,
@@ -189,6 +236,58 @@ def upgrade_skel(
                 except OSError:
                     log(f"    ❌ 无法删除临时文件: {p}")
 
+def _handle_skel_upgrade(
+    skel_bytes: bytes,
+    resource_name: str,
+    spine_converter_path: Path | None,
+    target_spine_version: str | None,
+    log=no_log
+) -> bytes:
+    """
+    处理 .skel 文件的版本检查和升级。
+    如果无需升级或升级失败，则返回原始字节。
+    """
+    # 检查Spine升级功能是否可用
+    spine_upgrade_enabled = (
+        spine_converter_path
+        and spine_converter_path.exists()
+        and target_spine_version
+        and target_spine_version.count(".") == 2
+    )
+
+    if not spine_upgrade_enabled:
+        return skel_bytes
+    
+    log(f"    > 检测到 .skel 文件: {resource_name}")
+    try:
+        # 检测 skel 的 spine 版本
+        current_version = get_skel_version_from_bytes(skel_bytes, log)
+        target_major_minor = ".".join(target_spine_version.split('.')[:2])
+        
+        # 仅在主版本或次版本不匹配时才尝试升级
+        if current_version and not current_version.startswith(target_major_minor):
+            log(f"      > spine 版本不匹配 (当前: {current_version}, 目标: {target_spine_version})。尝试升级...")
+
+            skel_success, upgraded_content = upgrade_skel(
+                raw_skel_data=skel_bytes,
+                spine_converter_path=spine_converter_path,
+                target_spine_version=target_spine_version,
+                log=log
+            )
+            if skel_success:
+                log(f"      > 成功升级 .skel 文件: {resource_name}")
+                return upgraded_content
+            else:
+                log(f"      ❌ 升级 .skel 文件 '{resource_name}' 失败，将使用原始文件")
+        else:
+            log(f"      > 版本匹配或无法检测 ({current_version})，无需升级。")
+
+    except Exception as e:
+        log(f"      ❌ 错误: 检测或升级 .skel 文件 '{resource_name}' 时发生错误: {e}")
+
+    # 默认返回原始字节
+    return skel_bytes
+
 def process_asset_replacement(
     target_bundle_path: Path,
     asset_folder: Path,
@@ -224,17 +323,6 @@ def process_asset_replacement(
         env = load_bundle(target_bundle_path, log)
         if not env:
             return False, "无法加载目标 Bundle 文件，即使在尝试移除潜在的 CRC 补丁后也是如此。请检查文件是否损坏。"
-        
-        # 判断Spine升级功能是否可用，以便在循环中快速检查
-        spine_upgrade_enabled = (
-            spine_converter_path
-            and spine_converter_path.exists()
-            and target_spine_version
-            and target_spine_version.count(".") == 2  # 目标版本必须是 "x.y.zz" 格式
-        )
-        
-        if spine_upgrade_enabled:
-            log(f"  > 已启用 Spine 升级功能，目标版本: {target_spine_version}")
         
         # 使用字典来优化查找，按资源类型分类
         tasks_by_type = {
@@ -296,36 +384,15 @@ def process_asset_replacement(
                         with open(file_path, "rb") as f:
                             content_bytes = f.read()
                         
-                        # 检查是否是需要升级的 .skel 文件
-                        is_skel = data.m_Name.lower().endswith('.skel')
-                        
-                        if is_skel and spine_upgrade_enabled:
-                            log(f"    > 检测到 .skel 文件: {data.m_Name}")
-                            try:
-                                # 检测 skel 的 spine 版本
-                                current_version = get_skel_version_from_bytes(content_bytes, log)
-                                target_major_minor = ".".join(target_spine_version.split('.')[:2])
-                                
-                                # 仅在主版本或次版本不匹配时才尝试升级
-                                if current_version and not current_version.startswith(target_major_minor):
-                                    log(f"      > spine 版本不匹配 (当前: {current_version}, 目标: {target_spine_version})。尝试升级...")
-
-                                    # 无论成功与否，content_bytes 都会被赋予正确的数据（升级后的或原始的）
-                                    skel_success, upgraded_content = upgrade_skel(
-                                        raw_skel_data=content_bytes,
-                                        spine_converter_path=spine_converter_path,
-                                        target_spine_version=target_spine_version,
-                                        log=log
-                                    )
-                                    if skel_success:
-                                        log(f"      > 成功升级 .skel 文件: {data.m_Name}")
-                                        content_bytes = upgraded_content
-                                    else:
-                                        log(f"      ❌ 升级 .skel 文件 '{data.m_Name}' 失败，使用原始文件")
-                                else:
-                                    log(f"      > 版本匹配或无法检测 ({current_version})，无需升级。")
-                            except Exception as e:
-                                log(f"      ❌ 错误: 检测或升级 .skel 文件 '{data.m_Name}' 时发生错误: {e}")
+                        # 如果是 .skel 文件，尝试进行升级
+                        if data.m_Name.lower().endswith('.skel'):
+                            content_bytes = _handle_skel_upgrade(
+                                skel_bytes=content_bytes,
+                                resource_name=data.m_Name,
+                                spine_converter_path=spine_converter_path,
+                                target_spine_version=target_spine_version,
+                                log=log
+                            )
                         
                         # 将读取到的 bytes 解码为 str，并使用正确的 .m_Script 属性
                         # 使用 "surrogateescape" 错误处理程序以确保二进制数据也能被正确处理
@@ -355,31 +422,18 @@ def process_asset_replacement(
                 log(f"  - {Path(file_path).name} (尝试匹配: '{asset_name}')")
 
         output_path = output_dir / target_bundle_path.name
+        save_ok, save_message = _save_and_finalize_bundle(
+            env=env,
+            output_path=output_path,
+            original_bundle_path=target_bundle_path,
+            perform_crc=perform_crc,
+            enable_padding=enable_padding,
+            compression=compression,
+            log=log
+        )
 
-        if perform_crc:
-            log(f"\n--- 阶段 2: CRC修正 ---")
-            log(f"  > 准备直接保存并修正CRC...")
-            
-            if not save_bundle(env, output_path, compression, log):
-                return False, "保存文件失败，操作已终止。"
-            
-            is_crc_success = CRCUtils.manipulate_crc(target_bundle_path, output_path, enable_padding)
-
-            if not is_crc_success:
-                if output_path.exists():
-                    try:
-                        output_path.unlink()
-                        log(f"  > 已删除失败的CRC修正文件: {output_path}")
-                    except OSError as e:
-                        log(f"  > 警告: 清理失败的CRC修正文件时出错: {e}")
-                return False, f"CRC 修正失败。最终文件 '{output_path}' 未能生成。"
-            
-            log("✅ CRC 修正成功！")
-        else:
-            log(f"\n--- 阶段 2: 保存最终文件 ---")
-            log(f"  > 准备直接保存最终文件...")
-            if not save_bundle(env, output_path, compression, log):
-                return False, "保存最终文件失败，操作已终止。"
+        if not save_ok:
+            return False, save_message
 
         log(f"最终文件已保存至: {output_path}")
         log(f"\n🎉 处理完成！")
@@ -414,15 +468,6 @@ def _b2b_replace(
     if not new_env:
         return None, 0
 
-    # 判断Spine升级功能是否可用，以便在循环中快速检查
-    spine_upgrade_enabled = (
-        "TextAsset" in asset_types_to_replace # skel文件以TextAsset类型存储
-        and spine_converter_path
-        and spine_converter_path.exists()
-        and target_spine_version
-        and target_spine_version.count(".") == 2  # 目标版本必须是 "x.y.zz" 格式
-    )
-
     # 定义匹配策略
     # 每个策略是一个元组: (策略名, 获取资源key的函数)
     strategies = [
@@ -456,39 +501,16 @@ def _b2b_replace(
                     # 从 m_Script 获取 TextAsset 的原始字节内容
                     asset_bytes = data.m_Script.encode("utf-8", "surrogateescape")
                     
-                    # 检查是否是需要升级的 .skel 文件
-                    is_skel = resource_name.lower().endswith('.skel')
-
-                    if is_skel and spine_upgrade_enabled:
-                        log(f"    > 检测到 .skel 文件: {resource_name}")
-                        try:
-                            # 检测 skel 的 spine 版本
-                            current_version = get_skel_version_from_bytes(asset_bytes, log)
-                            target_major_minor = ".".join(target_spine_version.split('.')[:2])
-                            
-                            # 仅在主版本或次版本不匹配时才尝试升级
-                            if current_version and not current_version.startswith(target_major_minor):
-                                log(f"      > spine 版本不匹配 (当前: {current_version}, 目标: {target_spine_version})。尝试升级...")
-
-                                # 无论成功与否，content 都会被赋予正确的数据（升级后的或原始的）
-                                skel_success, content = upgrade_skel(
-                                    raw_skel_data=asset_bytes,
-                                    spine_converter_path=spine_converter_path,
-                                    target_spine_version=target_spine_version,
-                                    log=log
-                                )
-                                if skel_success:
-                                    log(f"      > 成功升级 .skel 文件: {resource_name}")
-                                else:
-                                    log(f"      ❌ 升级 .skel 文件 '{resource_name}' 失败")
-                            else:
-                                log(f"      > 版本匹配或无法检测 ({current_version})，无需升级。")
-                                content = asset_bytes
-                        except Exception as e:
-                            log(f"      ❌ 错误: 检测或升级 .skel 文件 '{resource_name}' 时发生错误: {e}")
-                            content = asset_bytes # 出错时使用原始数据
+                    # 如果是 .skel 文件，尝试进行升级
+                    if resource_name.lower().endswith('.skel'):
+                        content = _handle_skel_upgrade(
+                            skel_bytes=asset_bytes,
+                            resource_name=resource_name,
+                            spine_converter_path=spine_converter_path,
+                            target_spine_version=target_spine_version,
+                            log=log
+                        )
                     else:
-                        # 对于 .atlas 文件或无需/无法升级的 .skel 文件
                         content = asset_bytes
                 else:
                     # 为其他可能的类型提供备用方案
@@ -559,6 +581,7 @@ def process_bundle_to_bundle_replacement(
 ):
     """
     从旧版Bundle包替换指定资源类型到新版Bundle包。
+    对_b2b_replace函数的封装。
     """
     try:
         if create_backup_file:
@@ -704,7 +727,6 @@ def find_new_bundle_path(
     log(f"  > 失败: {msg}")
     return None, msg
 
-
 def process_mod_update(
     old_mod_path: Path,
     new_bundle_path: Path,
@@ -751,10 +773,8 @@ def process_mod_update(
         if spine_converter_path and spine_converter_path.exists():
             log(f"  > 已启用 Spine 升级工具: {spine_converter_path.name}")
 
-        # --- 1. 执行 B2B 替换 ---
-        log("\n--- Bundle-to-Bundle 替换 ---")
-        
         # 进行Bundle to Bundle 替换
+        log("\n--- Bundle-to-Bundle 替换 ---")
         modified_env, replacement_count = _b2b_replace(
             old_bundle_path=old_mod_path, 
             new_bundle_path=new_bundle_path, 
@@ -770,36 +790,21 @@ def process_mod_update(
             return False, "没有找到任何名称匹配的资源进行替换，无法继续更新。"
         
         log(f"  > B2B 替换完成，共处理 {replacement_count} 个资源。")
-
-        # --- 2. 根据选项决定是否执行CRC修正 ---
-        # 在工作目录下生成文件
+        
+        # 保存和修正文件
         output_path = output_dir / new_bundle_path.name
+        save_ok, save_message = _save_and_finalize_bundle(
+            env=modified_env,
+            output_path=output_path,
+            original_bundle_path=new_bundle_path,
+            perform_crc=perform_crc,
+            enable_padding=enable_padding,
+            compression=compression,
+            log=log
+        )
 
-        if perform_crc:
-            log(f"\n--- CRC 修正 ---")
-            # 先保存未修正CRC的文件
-            if not save_bundle(modified_env, output_path, compression, log):
-                return False, "保存文件失败。"
-            
-            # 直接对最终文件进行CRC修正
-            is_crc_success = CRCUtils.manipulate_crc(new_bundle_path, output_path, enable_padding)
-
-            if not is_crc_success:
-                if output_path.exists():
-                    try:
-                        output_path.unlink()
-                        log(f"  > 已删除失败的CRC修正文件: {output_path}")
-                    except OSError as e:
-                        log(f"  > 警告: 清理失败的CRC修正文件时出错: {e}")
-                return False, f"CRC 修正失败。最终文件 '{output_path.name}' 未能生成。"
-            
-            log("✅ CRC 修正成功！")
-            
-        else:
-            log(f"\n--- 保存最终文件 ---")
-            log(f"  > 准备直接保存最终文件...")
-            if not save_bundle(modified_env, output_path, compression, log):
-                return False, "保存最终文件失败，操作已终止。"
+        if not save_ok:
+            return False, save_message
 
         log(f"最终文件已保存至: {output_path}")
         log(f"\n🎉 全部流程处理完成！")
