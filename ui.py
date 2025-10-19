@@ -447,22 +447,26 @@ class ModUpdateTab(TabFrame):
             if self.replace_mesh.get():
                 asset_types_to_replace.add("Mesh")
         
-        # 传递 output_dir (基础输出目录) 和资源类型集合
-        # 根据设置决定是否传入spine_converter_path
-        spine_converter_path = None
-        if self.enable_spine_conversion_var.get():
-            spine_converter_path = Path(self.spine_converter_path_var.get())
+        # 创建 SaveOptions 和 SpineOptions 对象
+        save_options = processing.SaveOptions(
+            perform_crc=self.enable_crc_correction.get(),
+            enable_padding=self.enable_padding.get(),
+            compression=self.compression_method.get()
+        )
+        
+        spine_options = processing.SpineOptions(
+            enabled=self.enable_spine_conversion_var.get(),
+            converter_path=Path(self.spine_converter_path_var.get()),
+            target_version=self.target_spine_version_var.get()
+        )
         
         success, message = processing.process_mod_update(
             old_mod_path = self.old_mod_path,
             new_bundle_path = self.new_mod_path,
             output_dir = output_dir,
-            enable_padding = self.enable_padding.get(), 
-            perform_crc = self.enable_crc_correction.get(),
             asset_types_to_replace = asset_types_to_replace,
-            compression = self.compression_method.get(),
-            spine_converter_path = spine_converter_path,
-            target_spine_version = self.target_spine_version_var.get(),
+            save_options = save_options,
+            spine_options = spine_options,
             log = self.logger.log
         )
         
@@ -606,20 +610,25 @@ class AssetReplacementTab(TabFrame):
         self.logger.log("开始从资源文件夹替换...")
         self.logger.status("正在处理中，请稍候...")
         
-        # 根据设置决定是否传入spine_converter_path
-        spine_converter_path = None
-        if self.enable_spine_conversion_var.get():
-            spine_converter_path = Path(self.spine_converter_path_var.get())
+        # 创建 SaveOptions 和 SpineOptions 对象
+        save_options = processing.SaveOptions(
+            perform_crc=self.enable_crc_correction.get(),
+            enable_padding=self.enable_padding.get(),
+            compression=self.compression_method.get()
+        )
+        
+        spine_options = processing.SpineOptions(
+            enabled=self.enable_spine_conversion_var.get(),
+            converter_path=Path(self.spine_converter_path_var.get()),
+            target_version=self.target_spine_version_var.get()
+        )
         
         success, message = processing.process_asset_replacement(
             target_bundle_path = self.bundle_path,
             asset_folder = self.folder_path,
             output_dir = output_dir,
-            perform_crc = self.enable_crc_correction.get(),
-            enable_padding = self.enable_padding.get(),
-            compression = self.compression_method.get(),
-            spine_converter_path = spine_converter_path,
-            target_spine_version = self.target_spine_version_var.get(),
+            save_options = save_options,
+            spine_options = spine_options,
             log = self.logger.log
         )
         

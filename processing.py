@@ -9,8 +9,33 @@ import shutil
 import re
 import tempfile
 import subprocess
+from dataclasses import dataclass
 
 from utils import CRCUtils, no_log, get_skel_version_from_bytes
+
+@dataclass
+class SaveOptions:
+    """封装了保存、压缩和CRC修正相关的选项。"""
+    perform_crc: bool = True
+    enable_padding: bool = False
+    compression: str = "lzma"
+
+@dataclass
+class SpineOptions:
+    """封装了Spine版本更新相关的选项。"""
+    enabled: bool = False
+    converter_path: Path | None = None
+    target_version: str | None = None
+
+    def is_enabled(self) -> bool:
+        """检查Spine升级功能是否已配置并可用。"""
+        return (
+            self.enabled
+            and self.converter_path
+            and self.converter_path.exists()
+            and self.target_version
+            and self.target_version.count(".") == 2
+        )
 
 def load_bundle(
     bundle_path: Path,
@@ -109,13 +134,11 @@ def save_bundle(
         log(traceback.format_exc())
         return False
 
-def _save_and_finalize_bundle(
+def _save_and_crc(
     env: UnityPy.Environment,
     output_path: Path,
     original_bundle_path: Path,
-    perform_crc: bool,
-    enable_padding: bool,
-    compression: str,
+    save_options: SaveOptions,
     log=no_log,
 ) -> tuple[bool, str]:
     """
@@ -125,16 +148,16 @@ def _save_and_finalize_bundle(
     Returns:
         (是否成功, 状态消息) 的元组。
     """
-    if perform_crc:
+    if save_options.perform_crc:
         log(f"\n--- CRC 修正 ---")
         log(f"  > 准备保存文件并修正CRC...")
         
         # 1. 先保存文件
-        if not save_bundle(env, output_path, compression, log):
+        if not save_bundle(env, output_path, save_options.compression, log):
             return False, "保存临时文件失败，操作已终止。"
         
         # 2. 对保存后的文件进行CRC修正
-        is_crc_success = CRCUtils.manipulate_crc(original_bundle_path, output_path, enable_padding)
+        is_crc_success = CRCUtils.manipulate_crc(original_bundle_path, output_path, save_options.enable_padding)
 
         if not is_crc_success:
             # 如果修正失败，清理掉生成的坏文件
@@ -152,28 +175,22 @@ def _save_and_finalize_bundle(
     else:
         log(f"\n--- 保存最终文件 ---")
         log(f"  > 准备直接保存最终文件...")
-        if not save_bundle(env, output_path, compression, log):
+        if not save_bundle(env, output_path, save_options.compression, log):
             return False, "保存最终文件失败，操作已终止。"
         return True, "文件保存成功。"
 
 def upgrade_skel(
     raw_skel_data: bytes,
-    spine_converter_path: Path,
-    target_spine_version: str,
+    spine_options: SpineOptions,
     log=no_log
 ) -> tuple[bool, bytes]:
     """
     使用外部工具升级 .skel 文件。
     返回 (是否成功, skel数据) 的元组。
     """
-    # 检查spine_converter_path是否为空或不存在
-    if not spine_converter_path or not spine_converter_path.exists():
-        log(f"  > ⚠️ Spine转换器路径无效或不存在: {spine_converter_path}")
-        return False, raw_skel_data
-    
-    # 检查target_spine_version是否为空
-    if not target_spine_version or not target_spine_version.strip():
-        log(f"  > ⚠️ 目标Spine版本为空")
+    # 检查Spine升级功能是否可用
+    if not spine_options.is_enabled():
+        log(f"  > ⚠️ Spine升级功能未启用或配置无效")
         return False, raw_skel_data
 
     temp_in_path, temp_out_path = None, None
@@ -188,11 +205,11 @@ def upgrade_skel(
 
         # 构建并执行命令
         command = [
-            str(spine_converter_path),
+            str(spine_options.converter_path),
             str(temp_in_path),
             str(temp_out_path),
             "-v",
-            target_spine_version
+            spine_options.target_version
         ]
         log(f"    > 执行命令: {' '.join(map(str, command))}")
         # 命令格式：SpineConverter.exe input.skel output.skel -v 4.2.33
@@ -239,8 +256,7 @@ def upgrade_skel(
 def _handle_skel_upgrade(
     skel_bytes: bytes,
     resource_name: str,
-    spine_converter_path: Path | None,
-    target_spine_version: str | None,
+    spine_options: SpineOptions = None,
     log=no_log
 ) -> bytes:
     """
@@ -248,30 +264,22 @@ def _handle_skel_upgrade(
     如果无需升级或升级失败，则返回原始字节。
     """
     # 检查Spine升级功能是否可用
-    spine_upgrade_enabled = (
-        spine_converter_path
-        and spine_converter_path.exists()
-        and target_spine_version
-        and target_spine_version.count(".") == 2
-    )
-
-    if not spine_upgrade_enabled:
+    if spine_options is None or not spine_options.is_enabled():
         return skel_bytes
     
     log(f"    > 检测到 .skel 文件: {resource_name}")
     try:
         # 检测 skel 的 spine 版本
         current_version = get_skel_version_from_bytes(skel_bytes, log)
-        target_major_minor = ".".join(target_spine_version.split('.')[:2])
+        target_major_minor = ".".join(spine_options.target_version.split('.')[:2])
         
         # 仅在主版本或次版本不匹配时才尝试升级
         if current_version and not current_version.startswith(target_major_minor):
-            log(f"      > spine 版本不匹配 (当前: {current_version}, 目标: {target_spine_version})。尝试升级...")
+            log(f"      > spine 版本不匹配 (当前: {current_version}, 目标: {spine_options.target_version})。尝试升级...")
 
             skel_success, upgraded_content = upgrade_skel(
                 raw_skel_data=skel_bytes,
-                spine_converter_path=spine_converter_path,
-                target_spine_version=target_spine_version,
+                spine_options=spine_options,
                 log=log
             )
             if skel_success:
@@ -292,11 +300,8 @@ def process_asset_replacement(
     target_bundle_path: Path,
     asset_folder: Path,
     output_dir: Path,
-    perform_crc: bool = True,
-    enable_padding: bool = False,
-    compression: str = "lzma",
-    spine_converter_path: Path | None = None,
-    target_spine_version: str | None = None,
+    save_options: SaveOptions,
+    spine_options: SpineOptions = None,
     log = no_log
 ):
     """
@@ -312,11 +317,8 @@ def process_asset_replacement(
         target_bundle_path: 目标Bundle文件的路径
         asset_folder: 包含替换资源的文件夹路径
         output_dir: 输出目录，用于保存生成的更新后文件
-        perform_crc: 是否执行CRC修正，默认为True
-        enable_padding: CRC修正时是否启用填充，默认为False
-        compression: 文件压缩方式，默认为"lzma"
-        spine_converter_path: Spine资源转换器路径，用于升级Skel版本。若不填写则跳过此步骤。
-        target_spine_version: 目标Spine版本，用于版本升级
+        save_options: 保存和CRC修正的选项
+        spine_options: Spine资源升级的选项
         log: 日志记录函数，默认为空函数
     """
     try:
@@ -389,8 +391,7 @@ def process_asset_replacement(
                             content_bytes = _handle_skel_upgrade(
                                 skel_bytes=content_bytes,
                                 resource_name=data.m_Name,
-                                spine_converter_path=spine_converter_path,
-                                target_spine_version=target_spine_version,
+                                spine_options=spine_options,
                                 log=log
                             )
                         
@@ -422,13 +423,11 @@ def process_asset_replacement(
                 log(f"  - {Path(file_path).name} (尝试匹配: '{asset_name}')")
 
         output_path = output_dir / target_bundle_path.name
-        save_ok, save_message = _save_and_finalize_bundle(
+        save_ok, save_message = _save_and_crc(
             env=env,
             output_path=output_path,
             original_bundle_path=target_bundle_path,
-            perform_crc=perform_crc,
-            enable_padding=enable_padding,
-            compression=compression,
+            save_options=save_options,
             log=log
         )
 
@@ -448,8 +447,7 @@ def _b2b_replace(
     old_bundle_path: Path,
     new_bundle_path: Path,
     asset_types_to_replace: set,
-    spine_converter_path: Path | None = None,
-    target_spine_version: str | None = None,
+    spine_options: SpineOptions = None,
     log = no_log,
 ):
     """
@@ -506,8 +504,7 @@ def _b2b_replace(
                         content = _handle_skel_upgrade(
                             skel_bytes=asset_bytes,
                             resource_name=resource_name,
-                            spine_converter_path=spine_converter_path,
-                            target_spine_version=target_spine_version,
+                            spine_options=spine_options,
                             log=log
                         )
                     else:
@@ -732,11 +729,8 @@ def process_mod_update(
     new_bundle_path: Path,
     output_dir: Path,
     asset_types_to_replace: set,
-    perform_crc: bool = True,
-    enable_padding: bool = False,
-    compression: str = "lzma",
-    spine_converter_path: Path | None = None,
-    target_spine_version: str | None = None,
+    save_options: SaveOptions,
+    spine_options: SpineOptions = None,
     log = no_log,
 ) -> tuple[bool, str]:
     """
@@ -756,11 +750,8 @@ def process_mod_update(
         new_bundle_path: 新版游戏资源文件的路径
         output_dir: 输出目录，用于保存生成的更新后文件
         asset_types_to_replace: 需要替换的资源类型集合（如 {"Texture2D", "TextAsset"}）
-        perform_crc: 是否执行CRC修正，默认为True
-        enable_padding: CRC修正时是否启用填充，默认为False
-        compression: 文件压缩方式，默认为"lzma"
-        spine_converter_path: Spine资源转换器路径，用于升级Skel版本。若不填写则跳过此步骤。
-        target_spine_version: 目标Spine版本，用于版本升级
+        save_options: 保存和CRC修正的选项
+        spine_options: Spine资源升级的选项
         log: 日志记录函数，默认为空函数
     
     Returns:
@@ -770,8 +761,8 @@ def process_mod_update(
         log("="*50)
         log(f"  > 使用旧版 Mod: {old_mod_path.name}")
         log(f"  > 使用新版资源: {new_bundle_path.name}")
-        if spine_converter_path and spine_converter_path.exists():
-            log(f"  > 已启用 Spine 升级工具: {spine_converter_path.name}")
+        if spine_options and spine_options.is_enabled():
+            log(f"  > 已启用 Spine 升级工具: {spine_options.converter_path.name}")
 
         # 进行Bundle to Bundle 替换
         log("\n--- Bundle-to-Bundle 替换 ---")
@@ -779,8 +770,7 @@ def process_mod_update(
             old_bundle_path=old_mod_path, 
             new_bundle_path=new_bundle_path, 
             asset_types_to_replace=asset_types_to_replace, 
-            spine_converter_path=spine_converter_path,
-            target_spine_version=target_spine_version,
+            spine_options=spine_options,
             log = log
         )
 
@@ -793,13 +783,11 @@ def process_mod_update(
         
         # 保存和修正文件
         output_path = output_dir / new_bundle_path.name
-        save_ok, save_message = _save_and_finalize_bundle(
+        save_ok, save_message = _save_and_crc(
             env=modified_env,
             output_path=output_path,
             original_bundle_path=new_bundle_path,
-            perform_crc=perform_crc,
-            enable_padding=enable_padding,
-            compression=compression,
+            save_options=save_options,
             log=log
         )
 

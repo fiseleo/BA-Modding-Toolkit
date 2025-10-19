@@ -75,16 +75,21 @@ def handle_update(args, logger):
     asset_types = set(args.asset_types)
     logger.log(f"指定的资源替换类型: {', '.join(asset_types)}")
 
+    save_options = processing.SaveOptions(
+        perform_crc=not args.no_crc,
+        enable_padding=False,
+        compression=args.compression
+    )
+
     # 调用核心处理函数
     success, message = processing.process_mod_update(
         old_mod_path=old_mod_path,
         new_bundle_path=new_bundle_path,
         output_dir=output_dir,
-        enable_padding=False,
+        save_options=save_options,
+        spine_options=None,
         log=logger.log,
-        perform_crc=not args.no_crc,
-        asset_types_to_replace=asset_types,
-        compression=args.compression
+        asset_types_to_replace=asset_types
     )
 
     logger.log("\n" + "="*50)
@@ -112,14 +117,20 @@ def handle_replace_asset(args, logger):
         logger.log(f"❌ 错误: 资源文件夹 '{asset_folder}' 不存在。")
         return
 
+    # 创建 SaveOptions 和 SpineOptions 对象
+    save_options = processing.SaveOptions(
+        perform_crc=not args.no_crc,
+        enable_padding=False,
+        compression=args.compression
+    )
+
     # 调用核心处理函数
     success, message = processing.process_asset_replacement(
         target_bundle_path=bundle_path,
         asset_folder=asset_folder,
         output_dir=output_dir,
-        enable_padding=False,
-        perform_crc=not args.no_crc,
-        compression=args.compression,
+        save_options=save_options,
+        spine_options=None,
         log=logger.log
     )
 
