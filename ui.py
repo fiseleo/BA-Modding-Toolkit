@@ -309,22 +309,6 @@ class ModUpdateTab(TabFrame):
         tk.Label(auto_find_frame, text="查找路径:", bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL).pack(side=tk.LEFT, padx=(0,5))
         tk.Entry(auto_find_frame, textvariable=self.game_resource_dir_var, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1, state='readonly').pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # 3. 选项和操作
-        
-        # --- 资源替换类型选项 ---
-        replace_options_frame = tk.LabelFrame(self, text="替换资源类型", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
-        replace_options_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        checkbox_container = tk.Frame(replace_options_frame, bg=Theme.FRAME_BG)
-        checkbox_container.pack(fill=tk.X)
-        
-        tk.Checkbutton(checkbox_container, text="ALL", variable=self.replace_all, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT)
-        tk.Checkbutton(checkbox_container, text="Texture2D", variable=self.replace_texture2d, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
-        tk.Checkbutton(checkbox_container, text="TextAsset", variable=self.replace_textasset, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
-        tk.Checkbutton(checkbox_container, text="Mesh", variable=self.replace_mesh, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
-
-        # --- 选项结束 ---
-
         # 操作按钮区域
         action_button_frame = tk.Frame(self) # 使用与父框架相同的背景色
         action_button_frame.pack(fill=tk.X, pady=10)
@@ -708,17 +692,14 @@ class CrcToolTab(TabFrame):
         tk.Label(auto_find_frame, text="查找路径:", bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL).pack(side=tk.LEFT, padx=(0,5))
         tk.Entry(auto_find_frame, textvariable=self.game_resource_dir_var, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1, state='readonly').pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # 3. 选项与操作
-        options_frame = tk.LabelFrame(self, text="选项与操作", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
-        options_frame.pack(fill=tk.X, pady=(0, 10))
+        # 3. 操作按钮
+        action_button_frame = tk.Frame(self) # 使用与父框架相同的背景色
+        action_button_frame.pack(fill=tk.X, pady=10)
+        action_button_frame.grid_columnconfigure((0, 1, 2), weight=1)
         
-        button_frame = tk.Frame(options_frame, bg=Theme.FRAME_BG)
-        button_frame.pack(fill=tk.X, pady=10)
-        button_frame.grid_columnconfigure((0, 1, 2), weight=1)
-        
-        tk.Button(button_frame, text="运行CRC修正", command=self.run_correction_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=0, sticky="ew", padx=5)
-        tk.Button(button_frame, text="计算CRC值", command=self.calculate_values_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=1, sticky="ew", padx=5)
-        tk.Button(button_frame, text="替换原始文件", command=self.replace_original_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=2, sticky="ew", padx=5)
+        tk.Button(action_button_frame, text="运行CRC修正", command=self.run_correction_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=0, sticky="ew", padx=5)
+        tk.Button(action_button_frame, text="计算CRC值", command=self.calculate_values_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=1, sticky="ew", padx=5)
+        tk.Button(action_button_frame, text="替换原始文件", command=self.replace_original_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=2, sticky="ew", padx=5)
 
     def drop_original(self, event): 
         if _is_multiple_files_drop(event.data):
@@ -927,9 +908,8 @@ class BatchModUpdateTab(TabFrame):
 
         # --- 1. 输入区域 ---
         input_frame = tk.LabelFrame(self, text="输入 Mod 文件/文件夹", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
-        input_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-        # 配置input_frame的网格，让列表框区域(row 1)可以垂直扩展
-        input_frame.rowconfigure(1, weight=1)
+        input_frame.pack(fill=tk.BOTH, pady=(0, 10))
+        # 配置input_frame的网格
         input_frame.columnconfigure(0, weight=1)
 
 
@@ -943,11 +923,10 @@ class BatchModUpdateTab(TabFrame):
         # 文件列表显示区
         list_frame = tk.Frame(input_frame, bg=Theme.FRAME_BG)
         list_frame.grid(row=1, column=0, sticky="nsew", pady=(5, 10))
-        # 配置list_frame的网格，让Listbox本身(0,0)可以双向扩展
-        list_frame.rowconfigure(0, weight=1)
+        # 配置list_frame的网格
         list_frame.columnconfigure(0, weight=1)
         
-        self.file_listbox = tk.Listbox(list_frame, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, selectmode=tk.EXTENDED)
+        self.file_listbox = tk.Listbox(list_frame, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, selectmode=tk.EXTENDED, height=10)
         
         # 创建并配置垂直和水平滚动条
         v_scrollbar = tk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.file_listbox.yview)
@@ -970,21 +949,9 @@ class BatchModUpdateTab(TabFrame):
         tk.Button(button_frame, text="移除选中", command=self.remove_selected_files, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_WARNING_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT).grid(row=0, column=2, sticky="ew", padx=5)
         tk.Button(button_frame, text="清空列表", command=self.clear_list, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT).grid(row=0, column=3, sticky="ew", padx=(5, 0))
 
-        # --- 2. 资源替换类型选项 ---
-        replace_options_frame = tk.LabelFrame(self, text="替换资源类型", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
-        replace_options_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        checkbox_container = tk.Frame(replace_options_frame, bg=Theme.FRAME_BG)
-        checkbox_container.pack(fill=tk.X)
-        
-        tk.Checkbutton(checkbox_container, text="ALL", variable=self.replace_all, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT)
-        tk.Checkbutton(checkbox_container, text="Texture2D", variable=self.replace_texture2d, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
-        tk.Checkbutton(checkbox_container, text="TextAsset", variable=self.replace_textasset, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
-        tk.Checkbutton(checkbox_container, text="Mesh", variable=self.replace_mesh, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
-
         # --- 3. 操作按钮 ---
         run_button = tk.Button(self, text="开始批量更新", command=self.run_batch_update_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8)
-        run_button.pack(fill=tk.X, pady=10)
+        run_button.pack(fill=tk.X, pady=5)
 
     def _add_files_to_list(self, file_paths: list[Path]):
         """辅助函数，用于向列表和Listbox添加文件，避免重复。"""
@@ -1124,15 +1091,26 @@ class BatchModUpdateTab(TabFrame):
                 failed_tasks.append(f"{old_mod_path.name} - 查找失败: {find_message}")
                 continue
 
+            # 创建 SaveOptions 和 SpineOptions 对象
+            save_options = processing.SaveOptions(
+                perform_crc=self.enable_crc_correction.get(),
+                enable_padding=self.enable_padding.get(),
+                compression=self.compression_method.get()
+            )
+            
+            spine_options = processing.SpineOptions(
+                enabled=self.enable_spine_conversion_var.get(),
+                converter_path=Path(self.spine_converter_path_var.get()),
+                target_version=self.target_spine_version_var.get()
+            )
+
             # 2. 执行更新
             success, process_message = processing.process_mod_update(
                 old_mod_path=old_mod_path,
                 new_bundle_path=new_bundle_path,
                 output_dir=output_dir,
-                enable_padding=enable_padding,
-                perform_crc=perform_crc,
-                asset_types_to_replace=asset_types_to_replace,
-                compression=compression_method,
+                save_options = save_options,
+                spine_options = spine_options,
                 log=self.logger.log
             )
 
@@ -1272,10 +1250,9 @@ class SettingsDialog(tk.Toplevel):
         self.app = app_instance # 保存主应用的引用
 
         self.title("高级设置")
-        self.geometry("550x550")
+        self.geometry("480x600")
         self.configure(bg=Theme.WINDOW_BG)
         self.transient(master) # 绑定到主窗口
-        self.grab_set() # 模态化，阻止操作主窗口
 
         # --- 将原有的全局设置UI搬到这里 ---
         container = tk.Frame(self, bg=Theme.WINDOW_BG, padx=15, pady=15)
@@ -1313,8 +1290,8 @@ class SettingsDialog(tk.Toplevel):
         )
         
         # 选项设置
-        global_options_frame = tk.LabelFrame(container, text="全局选项", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
-        global_options_frame.pack(fill=tk.X, pady=(15, 0))
+        global_options_frame = tk.LabelFrame(container, text="全局选项", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=5, pady=5)
+        global_options_frame.pack(fill=tk.X, pady=(5, 0))
         
         self.padding_checkbox = tk.Checkbutton(global_options_frame, text="添加私货", variable=self.app.enable_padding_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG)
         crc_checkbox = tk.Checkbutton(global_options_frame, text="CRC修正", variable=self.app.enable_crc_correction_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG, command=self.toggle_padding_checkbox_state)
@@ -1336,6 +1313,18 @@ class SettingsDialog(tk.Toplevel):
         
         # 设置行权重确保垂直对齐
         global_options_frame.rowconfigure(0, weight=1)
+        
+        # 资源替换类型选项
+        asset_replace_frame = tk.LabelFrame(container, text="替换资源类型", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
+        asset_replace_frame.pack(fill=tk.X, pady=(15, 0))
+        
+        asset_checkbox_container = tk.Frame(asset_replace_frame, bg=Theme.FRAME_BG)
+        asset_checkbox_container.pack(fill=tk.X)
+        
+        tk.Checkbutton(asset_checkbox_container, text="ALL", variable=self.app.replace_all_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT)
+        tk.Checkbutton(asset_checkbox_container, text="Texture2D", variable=self.app.replace_texture2d_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
+        tk.Checkbutton(asset_checkbox_container, text="TextAsset", variable=self.app.replace_textasset_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
+        tk.Checkbutton(asset_checkbox_container, text="Mesh", variable=self.app.replace_mesh_var, font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL, selectcolor=Theme.INPUT_BG).pack(side=tk.LEFT, padx=(0, 20))
         
         # Spine 转换器设置
         spine_frame = tk.LabelFrame(container, text="Spine 转换器设置", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
@@ -1466,7 +1455,7 @@ class App(tk.Frame):
 
     def setup_main_window(self):
         self.master.title("BA Modding Toolkit")
-        self.master.geometry("700x850")
+        self.master.geometry("600x750")
         self.master.configure(bg=Theme.WINDOW_BG)
 
     def _set_default_values(self):
@@ -1653,7 +1642,7 @@ class App(tk.Frame):
         return notebook
 
     def create_log_area(self, parent):
-        log_frame = tk.LabelFrame(parent, text="Log", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, pady=10)
+        log_frame = tk.LabelFrame(parent, text="Log", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, pady=2)
         log_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=0) # 日志区不需要顶部pady
 
         log_text = tk.Text(log_frame, wrap=tk.WORD, bg=Theme.LOG_BG, fg=Theme.LOG_FG, font=Theme.LOG_FONT, relief=tk.FLAT, bd=0, padx=5, pady=5, insertbackground=Theme.LOG_FG, height=10) #添加 height 参数
