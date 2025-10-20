@@ -163,8 +163,8 @@ class UIComponents:
 
     @staticmethod
     def create_directory_path_entry(parent, title, textvariable, select_cmd, open_cmd):
-        frame = tk.LabelFrame(parent, text=title, font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=10)
-        frame.pack(fill=tk.X, pady=(0, 10))
+        frame = tk.LabelFrame(parent, text=title, font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=8)
+        frame.pack(fill=tk.X, pady=5)
 
         entry = tk.Entry(frame, textvariable=textvariable, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1)
         entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5), ipady=3)
@@ -890,7 +890,7 @@ class CrcToolTab(TabFrame):
 
 
 class BatchModUpdateTab(TabFrame):
-    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var, replace_all_var, compression_method_var, auto_detect_subdirs_var):
+    def create_widgets(self, game_resource_dir_var, output_dir_var, enable_padding_var, enable_crc_correction_var, create_backup_var, replace_texture2d_var, replace_textasset_var, replace_mesh_var, replace_all_var, compression_method_var, auto_detect_subdirs_var, enable_spine_conversion_var, spine_converter_path_var, target_spine_version_var):
         self.mod_file_list: list[Path] = []
         
         # 接收共享变量
@@ -905,6 +905,11 @@ class BatchModUpdateTab(TabFrame):
         self.replace_all = replace_all_var
         self.compression_method = compression_method_var
         self.auto_detect_subdirs = auto_detect_subdirs_var
+        
+        # 接收Spine相关的配置变量
+        self.enable_spine_conversion_var = enable_spine_conversion_var
+        self.spine_converter_path_var = spine_converter_path_var
+        self.target_spine_version_var = target_spine_version_var
 
         # --- 1. 输入区域 ---
         input_frame = tk.LabelFrame(self, text="输入 Mod 文件/文件夹", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
@@ -1065,10 +1070,6 @@ class BatchModUpdateTab(TabFrame):
                 asset_types_to_replace.add("TextAsset")
             if self.replace_mesh.get():
                 asset_types_to_replace.add("Mesh")
-        
-        enable_padding = self.enable_padding.get()
-        perform_crc = self.enable_crc_correction.get()
-        compression_method = self.compression_method.get()
 
         total_files = len(self.mod_file_list)
         success_count = 0
@@ -1109,6 +1110,7 @@ class BatchModUpdateTab(TabFrame):
                 old_mod_path=old_mod_path,
                 new_bundle_path=new_bundle_path,
                 output_dir=output_dir,
+                asset_types_to_replace=asset_types_to_replace,
                 save_options = save_options,
                 spine_options = spine_options,
                 log=self.logger.log
@@ -1259,8 +1261,8 @@ class SettingsDialog(tk.Toplevel):
         container.pack(fill=tk.BOTH, expand=True)
 
         # --- 手动创建游戏资源目录UI，以实现动态标题 ---
-        self.game_dir_frame = tk.LabelFrame(container, text="", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=10)
-        self.game_dir_frame.pack(fill=tk.X, pady=(0, 10))
+        self.game_dir_frame = tk.LabelFrame(container, text="", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=8)
+        self.game_dir_frame.pack(fill=tk.X, pady=5)
 
         # 内部容器，用于放置输入框和按钮
         entry_button_container = tk.Frame(self.game_dir_frame, bg=Theme.FRAME_BG)
@@ -1315,8 +1317,8 @@ class SettingsDialog(tk.Toplevel):
         global_options_frame.rowconfigure(0, weight=1)
         
         # 资源替换类型选项
-        asset_replace_frame = tk.LabelFrame(container, text="替换资源类型", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
-        asset_replace_frame.pack(fill=tk.X, pady=(15, 0))
+        asset_replace_frame = tk.LabelFrame(container, text="替换资源类型", font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=5)
+        asset_replace_frame.pack(fill=tk.X, pady=8)
         
         asset_checkbox_container = tk.Frame(asset_replace_frame, bg=Theme.FRAME_BG)
         asset_checkbox_container.pack(fill=tk.X)
@@ -1686,7 +1688,10 @@ class App(tk.Frame):
                                              replace_mesh_var=self.replace_mesh_var,
                                              replace_all_var=self.replace_all_var,
                                              compression_method_var=self.compression_method_var,
-                                             auto_detect_subdirs_var=self.auto_detect_subdirs_var)
+                                             auto_detect_subdirs_var=self.auto_detect_subdirs_var,
+                                             enable_spine_conversion_var=self.enable_spine_conversion_var,
+                                             spine_converter_path_var=self.spine_converter_path_var,
+                                             target_spine_version_var=self.target_spine_version_var)
         self.notebook.add(batch_update_tab, text="批量更新 Mod")
 
         # Tab: CRC 工具

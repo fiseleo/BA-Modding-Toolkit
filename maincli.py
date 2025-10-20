@@ -86,10 +86,10 @@ def handle_update(args, logger):
         old_mod_path=old_mod_path,
         new_bundle_path=new_bundle_path,
         output_dir=output_dir,
+        asset_types_to_replace=asset_types,
         save_options=save_options,
-        spine_options=None,
-        log=logger.log,
-        asset_types_to_replace=asset_types
+        spine_options=None, # cli版本先不启用 Spine 转换
+        log=logger.log
     )
 
     logger.log("\n" + "="*50)

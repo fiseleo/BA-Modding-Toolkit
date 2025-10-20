@@ -42,11 +42,11 @@ The program can save user configurations to the `config.ini` file, which will be
 - **创建备份** (Create Backup): Creates a backup of the original file before overwriting it
 - **压缩方式** (Compression Method): Select the compression method for Bundle files (LZMA, LZ4, Keep Original, No Compression)
 
-### Resource Type Options
-- **Texture2D**: Illustrations, textures, image resources
+### Asset Type Options
+- **Texture2D**: Illustrations, textures, image assets
 - **TextAsset**: `.atlas`, `.skel` files, Spine animation skeleton files
-- **Mesh**: 3D model resources
-- **ALL**: All types of resources (experimental, not recommended)
+- **Mesh**: 3D model assets
+- **ALL**: All types of assets, including those not listed above (experimental, not recommended)
 
 ### Spine Converter (Experimental Feature)
 Uses a third-party program to convert older Spine 3.8 format to the currently supported 4.2 format.
@@ -71,7 +71,7 @@ Click the "Save" button to save the configuration, which will be automatically r
 ### 一键更新 Mod (One-Click Mod Update)
 1. Drag and drop or browse to select the old Mod Bundle file that needs to be updated
 2. The program will automatically find the corresponding target Bundle file in the resource directory
-3. Check the resource types that need to be replaced in the settings window
+3. Check the asset types that need to be replaced in the settings window
 4. Click the "开始一键更新" (Start One-Click Update) button, the program will automatically process and generate the updated Bundle file
 5. (Optional) After success, click "覆盖原文件" (Overwrite Original File) to apply the modifications. Please ensure the "创建备份" (Create Backup) option is enabled to prevent risks.
 
@@ -81,7 +81,7 @@ This feature can also be used to port mods between different platforms, just sel
 1. Drag and drop or browse to select a folder containing multiple Mod files, or directly drag and drop multiple Mod files
     - The 4 buttons below are: 添加文件 (Add a File), 添加文件夹 (Add a Folder), 移除选中 (Remove Selected), 清空列表 (Clear List).
 2. The program will automatically identify and list all processable Mod files
-3. Configure resource types and other options in the settings window
+3. Configure asset types and other options in the settings window
 4. Click the "开始批量更新" (Start Batch Update) button, the program will process all selected Mod files in sequence
 
 ### CRC 修正工具 (CRC Fix Tool)
@@ -92,15 +92,15 @@ This feature can also be used to port mods between different platforms, just sel
 
 The "计算CRC值" (Calculate CRC Value) button can be used to manually view the CRC checksum of a single file or two files.
 
-### 资源文件夹替换 (Resource Folder Replacement)
-1. Drag and drop or browse to select the folder containing replacement resources
+### 资源文件夹替换 (Asset Folder Replacement)
+1. Drag and drop or browse to select the folder containing replacement assets
     - Supported file types: `.png` (textures), `.skel`, `.atlas` (Spine animation files)
-    - Ensure resource filenames match the resource names in the target Bundle file
+    - Ensure asset filenames match the asset names in the target Bundle file
 2. Drag and drop or browse to select the target Bundle file that needs to be modified
-3. Click the "开始替换" (Start Replacement) button: performs the resource replacement operation
+3. Click the "开始替换" (Start Replacement) button: performs the asset replacement operation
 4. (Optional) After success, click "覆盖原文件" (Overwrite Original File) to apply the modifications. Please ensure the "创建备份" (Create Backup) option is enabled to prevent risks.
 
-This feature is for creating new Mods, such as quickly packaging modified resources into Bundle files.
+This feature is for creating new Mods, such as quickly packaging modified assets into Bundle files.
 
 ## Developing
 
@@ -135,5 +135,5 @@ BA-Modding-Toolkit/
 This project uses the following excellent 3rd-party libraries:
 
 - [UnityPy](https://github.com/K0lb3/UnityPy): Core library for parsing and manipulating Unity Bundle files
-- [Pillow](https://python-pillow.org/): Used for processing texture resources in the game
+- [Pillow](https://python-pillow.org/): Used for processing texture assets in the game
 - [tkinterdnd2](https://github.com/pmgagne/tkinterdnd2): Adds drag-and-drop functionality support for Tkinter
