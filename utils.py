@@ -24,15 +24,22 @@ class CRCUtils:
         return binascii.crc32(data) & 0xFFFFFFFF
 
     @staticmethod
-    def check_crc_match(file_1: Path, file_2: Path) -> bool:
+    def check_crc_match(source_1: Path | bytes, source_2: Path | bytes) -> bool:
         """
-        检测两个文件的CRC值是否匹配。
+        检测两个文件或字节数据的CRC值是否匹配。
         返回True表示CRC值一致，False表示不一致。
         """
-        with open(str(file_1), "rb") as f:
-            data_1 = f.read()
-        with open(str(file_2), "rb") as f:
-            data_2 = f.read()
+        if isinstance(source_1, Path):
+            with open(str(source_1), "rb") as f:
+                data_1 = f.read()
+        else:
+            data_1 = source_1
+
+        if isinstance(source_2, Path):
+            with open(str(source_2), "rb") as f:
+                data_2 = f.read()
+        else:
+            data_2 = source_2
 
         crc_1 = CRCUtils.compute_crc32(data_1)
         crc_2 = CRCUtils.compute_crc32(data_2)
@@ -40,16 +47,11 @@ class CRCUtils:
         return crc_1 == crc_2
     
     @staticmethod
-    def manipulate_crc(original_path: Path, modified_path: Path, enable_padding: bool = False) -> bool:
+    def apply_crc_fix(original_data: bytes, modified_data: bytes, enable_padding: bool = False) -> bytes | None:
         """
-        修正修改后文件的CRC，使其与原始文件匹配。
-        此方法处理文件的读写操作。
+        计算修正CRC后的数据。
+        如果修正成功，返回修正后的完整字节数据；如果失败，返回None。
         """
-        with open(str(original_path), "rb") as f:
-            original_data = f.read()
-        with open(str(modified_path), "rb") as f:
-            modified_data = f.read()
-
         original_crc = CRCUtils.compute_crc32(original_data)
         
         padding_bytes = b'\x08\x08\x08\x08' if enable_padding else b''
@@ -80,11 +82,27 @@ class CRCUtils:
         final_crc = CRCUtils.compute_crc32(final_data)
         is_crc_match = (final_crc == original_crc)
 
-        if is_crc_match:
-            with open(modified_path, "wb") as f:
-                f.write(final_data)
+        return final_data if is_crc_match else None
 
-        return is_crc_match
+    @staticmethod
+    def manipulate_crc(original_path: Path, modified_path: Path, enable_padding: bool = False) -> bool:
+        """
+        修正修改后文件的CRC，使其与原始文件匹配。
+        此方法封装了apply_ apply_crc_fix方法，处理文件的读写操作。
+        """
+        with open(str(original_path), "rb") as f:
+            original_data = f.read()
+        with open(str(modified_path), "rb") as f:
+            modified_data = f.read()
+
+        corrected_data = CRCUtils.apply_crc_fix(original_data, modified_data, enable_padding)
+        
+        if corrected_data:
+            with open(modified_path, "wb") as f:
+                f.write(corrected_data)
+            return True
+        
+        return False
 
     # --- 内部使用的私有静态方法 ---
 
@@ -240,44 +258,30 @@ def get_environment_info():
 
     return "\n".join(lines)
 
-def get_skel_version_from_file(filepath: Path, log = no_log) -> str | None:
+def get_skel_version(source: Path | bytes, log = no_log) -> str | None:
     """
-    通过扫描文件头部来查找Spine版本号。
+    通过扫描文件或字节数据头部来查找Spine版本号。
 
     Args:
-        filepath: .skel 文件的路径。
-
-    Returns:
-        一个字符串，表示Spine的版本号，例如 "4.2.33"。
-        如果未找到，则返回 None。
-    """
-    if not filepath.exists():
-        log(f"错误: 文件不存在 -> {filepath}")
-        return None
-
-    try:
-        with open(str(filepath), 'rb') as f:
-            # 读取文件的前256个字节。版本号几乎总是在这个范围内。
-            header_chunk = f.read(256)
-            return get_skel_version_from_bytes(header_chunk, log)
-
-    except Exception as e:
-        log(f"处理文件时发生错误: {e}")
-        return None
-
-def get_skel_version_from_bytes(data: bytes, log = no_log) -> str | None:
-    """
-    通过扫描字节数据头部来查找Spine版本号。
-
-    Args:
-        data: .skel 文件的字节数据。
+        source: .skel 文件的 Path 对象或其字节数据 (bytes)。
 
     Returns:
         一个字符串，表示Spine的版本号，例如 "4.2.33"。
         如果未找到，则返回 None。
     """
     try:
-        # 读取数据的前256个字节。版本号几乎总是在这个范围内。
+        data = b''
+        if isinstance(source, Path):
+            if not source.exists():
+                log(f"错误: 文件不存在 -> {source}")
+                return None
+            with open(str(source), 'rb') as f:
+                # 读取文件的前256个字节。版本号几乎总是在这个范围内。
+                data = f.read(256)
+        else:
+            data = source
+        
+        # 读取数据的前256个字节。
         header_chunk = data[:256]
         header_text = header_chunk.decode('utf-8', errors='ignore')
 
@@ -292,5 +296,5 @@ def get_skel_version_from_bytes(data: bytes, log = no_log) -> str | None:
             return None
 
     except Exception as e:
-        log(f"处理字节数据时发生错误: {e}")
+        log(f"处理源数据时发生错误: {e}")
         return None

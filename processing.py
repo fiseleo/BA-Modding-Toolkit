@@ -11,7 +11,7 @@ import tempfile
 import subprocess
 from dataclasses import dataclass
 
-from utils import CRCUtils, no_log, get_skel_version_from_bytes
+from utils import CRCUtils, no_log, get_skel_version
 
 @dataclass
 class SaveOptions:
@@ -107,32 +107,42 @@ def save_bundle(
 ) -> bool:
     """
     将修改后的 Unity bundle 保存到指定路径。
+    """
+    try:
+        bundle_data = compress_bundle(env, compression, log)
+        with open(output_path, "wb") as f:
+            f.write(bundle_data)
+        return True
+    except Exception as e:
+        log(f"❌ 保存 bundle 文件到 '{output_path}' 时失败: {e}")
+        log(traceback.format_exc())
+        return False
+
+def compress_bundle(
+    env: UnityPy.Environment,
+    compression: str = "none",
+    log=no_log
+) -> bytes:
+    """
+    从 UnityPy.Environment 对象生成 bundle 文件的字节数据。
     compression: 用于控制压缩方式。
                  - "lzma": (默认) 使用 LZMA 压缩。
                  - "lz4": 使用 LZ4 压缩。
                  - "original": 保留原始压缩方式。
                  - "none": 不进行压缩。
     """
-    try:
-        save_kwargs = {}
-        if compression == "original":
-            log("压缩方式: 保持原始设置")
-            # Not passing the 'packer' argument preserves the original compression.
-        elif compression == "none":
-            log("压缩方式: 不压缩")
-            save_kwargs['packer'] = ""  # An empty string typically means no compression.
-        else:
-            log(f"压缩方式: {compression.upper()}")
-            save_kwargs['packer'] = compression
-
-        with open(output_path, "wb") as f:
-            f.write(env.file.save(**save_kwargs))
-
-        return True
-    except Exception as e:
-        log(f"❌ 保存 bundle 文件到 '{output_path}' 时失败: {e}")
-        log(traceback.format_exc())
-        return False
+    save_kwargs = {}
+    if compression == "original":
+        log("压缩方式: 保持原始设置")
+        # Not passing the 'packer' argument preserves the original compression.
+    elif compression == "none":
+        log("压缩方式: 不压缩")
+        save_kwargs['packer'] = ""  # An empty string typically means no compression.
+    else:
+        log(f"压缩方式: {compression.upper()}")
+        save_kwargs['packer'] = compression
+    
+    return env.file.save(**save_kwargs)
 
 def _save_and_crc(
     env: UnityPy.Environment,
@@ -142,42 +152,51 @@ def _save_and_crc(
     log=no_log,
 ) -> tuple[bool, str]:
     """
-    一个辅助函数，用于保存bundle并根据需要执行CRC修正。
+    一个辅助函数，用于生成压缩bundle数据，根据需要执行CRC修正，并最终保存到文件。
     封装了保存、CRC修正的逻辑。
 
     Returns:
-        (是否成功, 状态消息) 的元组。
+        tuple(bool, str): (是否成功, 状态消息) 的元组。
     """
-    if save_options.perform_crc:
-        log(f"\n--- CRC 修正 ---")
-        log(f"  > 准备保存文件并修正CRC...")
-        
-        # 1. 先保存文件
-        if not save_bundle(env, output_path, save_options.compression, log):
-            return False, "保存临时文件失败，操作已终止。"
-        
-        # 2. 对保存后的文件进行CRC修正
-        is_crc_success = CRCUtils.manipulate_crc(original_bundle_path, output_path, save_options.enable_padding)
+    try:
+        # 1. 从 env 生成修改后的压缩 bundle 数据
+        log(f"\n--- 导出修改后的 Bundle 文件 ---")
+        log("  > 压缩 Bundle 数据")
+        modified_data = compress_bundle(env, save_options.compression, log)
 
-        if not is_crc_success:
-            # 如果修正失败，清理掉生成的坏文件
-            if output_path.exists():
-                try:
-                    output_path.unlink()
-                    log(f"  > 已删除CRC修正失败的文件: {output_path}")
-                except OSError as e:
-                    log(f"  > 警告: 清理CRC修正失败的文件时出错: {e}")
-            return False, f"CRC 修正失败。最终文件 '{output_path.name}' 未能生成。"
-        
-        log("✅ CRC 修正成功！")
-        return True, "文件保存和CRC修正成功。"
+        final_data = modified_data
+        success_message = "文件保存成功。"
 
-    else:
-        log(f"\n--- 保存最终文件 ---")
-        log(f"  > 准备直接保存最终文件...")
-        if not save_bundle(env, output_path, save_options.compression, log):
-            return False, "保存最终文件失败，操作已终止。"
-        return True, "文件保存成功。"
+        if save_options.perform_crc:
+            log(f"  > 准备修正CRC...")
+            
+            with open(original_bundle_path, "rb") as f:
+                original_data = f.read()
+
+            corrected_data = CRCUtils.apply_crc_fix(
+                original_data, 
+                modified_data, 
+                save_options.enable_padding
+            )
+
+            if not corrected_data:
+                return False, f"CRC 修正失败。最终文件 '{output_path.name}' 未能生成。"
+            
+            final_data = corrected_data
+            success_message = "文件保存和CRC修正成功。"
+            log("✅ CRC 修正成功！")
+
+        # 2. 将最终数据写入文件
+        log(f"  > 正在写入文件: {output_path}")
+        with open(output_path, "wb") as f:
+            f.write(final_data)
+        
+        return True, success_message
+
+    except Exception as e:
+        log(f"❌ 保存或修正 bundle 文件到 '{output_path}' 时失败: {e}")
+        log(traceback.format_exc())
+        return False, f"保存或修正文件时发生错误: {e}"
 
 def upgrade_skel(
     raw_skel_data: bytes,
@@ -270,7 +289,7 @@ def _handle_skel_upgrade(
     log(f"    > 检测到 .skel 文件: {resource_name}")
     try:
         # 检测 skel 的 spine 版本
-        current_version = get_skel_version_from_bytes(skel_bytes, log)
+        current_version = get_skel_version(skel_bytes, log)
         target_major_minor = ".".join(spine_options.target_version.split('.')[:2])
         
         # 仅在主版本或次版本不匹配时才尝试升级
@@ -283,10 +302,10 @@ def _handle_skel_upgrade(
                 log=log
             )
             if skel_success:
-                log(f"      > 成功升级 .skel 文件: {resource_name}")
+                log(f"    > 成功升级 .skel 文件: {resource_name}")
                 return upgraded_content
             else:
-                log(f"      ❌ 升级 .skel 文件 '{resource_name}' 失败，将使用原始文件")
+                log(f"    ❌ 升级 .skel 文件 '{resource_name}' 失败，将使用原始文件")
         else:
             log(f"      > 版本匹配或无法检测 ({current_version})，无需升级。")
 
