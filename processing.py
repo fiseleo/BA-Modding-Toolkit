@@ -452,6 +452,7 @@ def _b2b_replace(
 ):
     """
     执行 Bundle-to-Bundle 的核心替换逻辑。
+    asset_types_to_replace: 要替换的资源类型集合（如 {"Texture2D", "TextAsset", "Mesh"} 的子集 或 {"ALL"}）
     按顺序尝试多种匹配策略（path_id, name_type），一旦有策略成功替换了至少一个资源，就停止并返回结果。
     返回一个元组 (modified_env, replacement_count)，如果失败则 modified_env 为 None。
     """
@@ -509,6 +510,9 @@ def _b2b_replace(
                         )
                     else:
                         content = asset_bytes
+                elif obj.type.name == "Mesh":
+                    # 对于 Mesh 类型，直接使用原始数据
+                    content = obj.get_raw_data()
                 else:
                     # 为其他可能的类型提供备用方案
                     if replace_all:
@@ -546,6 +550,9 @@ def _b2b_replace(
                             # 我们需要将其解码为字符串，然后赋给 m_Script 属性
                             new_data.m_Script = old_content.decode("utf-8", "surrogateescape")
                             new_data.save()
+                        elif obj.type.name == "Mesh":
+                            # 对于 Mesh 类型，直接使用原始数据
+                            obj.set_raw_data(old_content)
                         else:
                             obj.set_raw_data(old_content)
 
