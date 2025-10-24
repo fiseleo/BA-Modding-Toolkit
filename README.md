@@ -45,24 +45,28 @@ The program contains multiple functional tabs:
 Click the **Settings** button at the top of the main interface to open the advanced settings window.
 The program can save user configurations to the `config.ini` file, which will be automatically restored upon next startup.
 
-### Directory Settings
+### Settings Interface
+
+![Settings](assets/help/gui-help-settings-en.png)
+
+#### Directory Settings
 - **游戏根目录** (Game Root Directory): Set the game installation directory. The program can automatically detect resource subdirectories
 - **输出目录** (Output Directory): Set the save location for generated files
 
-### Global Options
+#### Global Options
 - **CRC 修正** (CRC Fix): Automatically corrects the Bundle file's CRC checksum, preventing the file from being rejected after modification
     - Currently only required for Steam version Mods, can be ignored for other versions
 - 添加私货: Add `0x08080808` before CRC correction. ~~You can ignore it lol~~
 - **创建备份** (Create Backup): Creates a backup of the original file before overwriting it
 - **压缩方式** (Compression Method): Select the compression method for Bundle files (LZMA, LZ4, Keep Original, No Compression)
 
-### Asset Type Options
+#### Asset Type Options
 - **Texture2D**: Illustrations, textures, image assets
 - **TextAsset**: `.atlas`, `.skel` files, Spine animation skeleton files
 - **Mesh**: 3D model assets
 - **ALL**: All types of assets, including those not listed above (experimental, not recommended)
 
-### Spine Converter (Experimental Feature)
+#### Spine Converter (Experimental Feature)
 Uses a third-party program to convert older Spine 3.8 format to the currently supported 4.2 format.
 - You need to download the third-party Spine converter program yourself. BAMT only calls the program to convert Spine files, not provides the program itself.
 - Download URL: [SpineSkeletonDataConverter](https://github.com/wang606/SpineSkeletonDataConverter/releases)

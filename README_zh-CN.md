@@ -43,24 +43,28 @@ python maincli.py env
 点击主界面上方的 **Settings** 按钮打开高级设置窗口。
 程序可以将用户配置保存到 `config.ini` 文件，下次启动时会自动恢复之前的设置。
 
-### 目录设置
+### 设置界面
+
+![Settings](assets/help/gui-help-settings-zhcn.png)
+
+#### 目录设置
 - **游戏根目录**：设置游戏安装目录。程序能够自动检测资源子目录
 - **输出目录**：设置生成文件的保存位置
 
-### 全局选项
+#### 全局选项
 - **CRC 修正**：自动修正 Bundle 文件的 CRC 校验值，防止文件被修改后无法运行
     - 当前仅 Steam 版本 Mod 需要此步骤，其他版本 Mod 可忽略
 - 添加私货: 在CRC修正之前添加`0x08080808`。~~确实是私货，不选也没有影响~~
 - **创建备份**：在覆盖原文件之前创建原文件的备份
 - **压缩方式**：选择 Bundle 文件的压缩方式（LZMA、LZ4、保持原始、不压缩）
 
-### 资源类型选项
+#### 资源类型选项
 - **Texture2D**：立绘、贴图、纹理资源
 - **TextAsset**：`.atlas`、`.skel`文件，Spine使用的骨骼文件
 - **Mesh**：3D 模型资源
 - **ALL**：所有类型的资源，也包括上面三者之外的类型（实验性，不推荐启用）
 
-### Spine 转换器（实验性功能）
+#### Spine 转换器（实验性功能）
 使用第三方程序，将较老的 Spine 3.8 格式转换为当前版本支持的 4.2 格式。
 - 请自行下载第三方 Spine 转换器程序，BAMT 仅提供调用程序转换功能，不包含该程序本体。
 - 下载地址：[SpineSkeletonDataConverter](https://github.com/wang606/SpineSkeletonDataConverter/releases)
@@ -70,7 +74,7 @@ python maincli.py env
 
 ## 使用方法
 
-![How to update a mod with BAMT GUI](assets/help/gui-help-mod-update-en.png)
+![How to update a mod with BAMT GUI](assets/help/gui-help-mod-update-zhcn.png)
 
 - 首先，请打开 Settings 窗口，配置好游戏根目录和输出目录。
 - 如果是为Steam版更新或制作Mod，请勾选"CRC 修正"选项。
