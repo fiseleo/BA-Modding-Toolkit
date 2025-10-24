@@ -253,7 +253,7 @@ def upgrade_skel(
         return True, upgraded_data
 
     except FileNotFoundError:
-        log(f"    ❌ Spine 转换器未找到: {spine_converter_path}")
+        log(f"    ❌ Spine 转换器未找到: {spine_options.converter_path}")
         return False, raw_skel_data
     except subprocess.CalledProcessError as e:
         log(f"    ❌ Spine 转换器执行失败 (返回码: {e.returncode})")

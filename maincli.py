@@ -4,16 +4,20 @@ import sys
 from pathlib import Path
 import logging
 import shutil
+from utils import get_environment_info
 
 # 将项目根目录添加到 sys.path，以便可以导入 processing 和 utils
 sys.path.append(str(Path(__file__).parent.absolute()))
 
 try:
     import processing
-    from utils import CRCUtils, get_environment_info
+    from utils import CRCUtils
 except ImportError as e:
     print(f"错误: 无法导入必要的模块: {e}")
-    print("请确保 'processing.py' 和 'utils.py' 文件与此脚本位于同一目录中。")
+    print("请确保 'processing.py' 和 'utils.py' 文件与此脚本位于同一目录中。\n")
+
+    print(get_environment_info())
+
     sys.exit(1)
 
 # --- 日志设置 ---
@@ -222,6 +226,7 @@ def handle_crc(args, logger):
     except Exception as e:
         logger.log(f"❌ CRC修正过程中发生错误: {e}")
         logger.status("CRC修正失败")
+
 def main():
     """主函数，用于解析命令行参数并分派任务。"""
     parser = argparse.ArgumentParser(

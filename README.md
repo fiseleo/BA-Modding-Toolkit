@@ -10,10 +10,18 @@ A toolkit for automating the creation and updating of Blue Archive Mod Bundle fi
 
 ## Getting Started
 
+### Install Python
+Please ensure that Python 3.8 or higher is installed.
+
+You can download and install Python from the [official website](https://www.python.org/downloads/).
+
+When you run `python --version` in the console, you should see something like `Python 3.12.4`.
+
 ### Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
+If you encounter a `Failed building wheel` error in this step, please try using a slightly older version of Python, such as Python 3.13 or 3.12.
 
 ### Run the Program
 ```bash
@@ -21,10 +29,16 @@ python main.pyw
 ```
 Alternatively, you can double-click the `main.pyw` file to launch the program.
 
+If the program fails to start, please try running commands below in the console to check if the environment is configured correctly. 
+```bash
+python maincli.py env
+```
+
 ## Program Interface Description
 The program contains multiple functional tabs:
-- **一键更新 Mod** (One-Click Mod Update): Single Mod file update functionality
-- **批量更新 Mod** (Batch Mod Update): Batch processing of multiple Mod files
+- **Mod 更新** (Mod Update): Update or port Mod files between different platforms
+    - **单个更新** (Single Update): Update a single Mod file
+    - **批量更新** (Batch Update): Batch process multiple Mod files
 - **CRC 修正工具** (CRC Fix Tool): CRC checksum correction functionality
 - **资源文件夹替换** (Asset Folder Replacement): Replace asset files in Bundle with files from folder
 
@@ -60,15 +74,13 @@ Uses a third-party program to convert older Spine 3.8 format to the currently su
 
 ![How to update a mod with BAMT GUI](assets/help/gui-help-mod-update-en.png)
 
-First, open the Settings window and configure the game root directory and output directory.
+- First, open the Settings window and configure the game root directory and output directory.
+- If you are updating or creating a Mod for the Steam version, check the "CRC 修正" (CRC Fix) option.
+- It is recommended to check the "创建备份" (Create Backup) option to prevent accidental overwriting of original files.
+- Click the "Save" button to save the configuration, which will be automatically restored upon next startup.
 
-If you are updating or creating a Mod for the Steam version, check the "CRC 修正" (CRC Fix) option.
-
-It is recommended to check the "创建备份" (Create Backup) option to prevent accidental overwriting of original files.
-
-Click the "Save" button to save the configuration, which will be automatically restored upon next startup.
-
-### 一键更新 Mod (One-Click Mod Update)
+### Mod 更新 (Mod Update)
+#### 单个更新 (Single Update)
 1. Drag and drop or browse to select the old Mod Bundle file that needs to be updated
 2. The program will automatically find the corresponding target Bundle file in the resource directory
 3. Check the asset types that need to be replaced in the settings window
@@ -77,7 +89,7 @@ Click the "Save" button to save the configuration, which will be automatically r
 
 This feature can also be used to port mods between different platforms, just select the Bundle file from the corresponding platform in step 2.
 
-### 批量更新 Mod (Batch Mod Update)
+#### 批量更新 (Batch Update)
 1. Drag and drop or browse to select a folder containing multiple Mod files, or directly drag and drop multiple Mod files
     - The 4 buttons below are: 添加文件 (Add a File), 添加文件夹 (Add a Folder), 移除选中 (Remove Selected), 清空列表 (Clear List).
 2. The program will automatically identify and list all processable Mod files
@@ -131,6 +143,7 @@ BA-Modding-Toolkit/
 - [kalina](https://github.com/kalinaowo): Creating the prototype of the `CRCUtils` class, the starting point of BAMT.
 - [afiseleo](https://github.com/fiseleo): Helping with the CLI version.
 - [wang606](https://github.com/wang606): Spine version conversion feature based on [SpineSkeletonDataConverter](https://github.com/wang606/SpineSkeletonDataConverter) project.
+    - SpineSkeletonDataConverter is a standalone third-party program, please follow its License when downloading and using it. SpineSkeletonDataConverter is NOT distributed with or included in BAMT. 
 
 This project uses the following excellent 3rd-party libraries:
 

@@ -87,8 +87,8 @@ class CRCUtils:
     @staticmethod
     def manipulate_crc(original_path: Path, modified_path: Path, enable_padding: bool = False) -> bool:
         """
-        修正修改后文件的CRC，使其与原始文件匹配。
-        此方法封装了apply_ apply_crc_fix方法，处理文件的读写操作。
+        修正modified_path文件的CRC，使其与original_path文件匹配。
+        此方法封装了apply_crc_fix方法，处理文件的读写操作。
         """
         with open(str(original_path), "rb") as f:
             original_data = f.read()
@@ -201,16 +201,28 @@ def get_environment_info():
         unitypy_version = UnityPy.__version__
     except ImportError:
         unitypy_version = "Not installed"
+
     try:
         from PIL import Image
         pillow_version = Image.__version__
     except ImportError:
         pillow_version = "Not installed"
+
     try:
         import tkinter
         tk_version = tkinter.Tcl().eval('info patchlevel')
-    except (ImportError, tkinter.TclError):
-        tk_version = "Not available"
+    except ImportError:
+        tk_version = "Not installed"
+    except tkinter.TclError:
+        tk_version = "Unknown"
+
+    try:
+        import tkinterdnd2
+        tkinterdnd2_version = tkinterdnd2.TkinterDnD.TkdndVersion or "Unknown"
+    except ImportError:
+        tkinterdnd2_version = "Not installed"
+    except AttributeError:
+        tkinterdnd2_version = "Unknown"
 
     import sys
     import platform
@@ -254,6 +266,8 @@ def get_environment_info():
     lines.append(f"UnityPy Version:   {unitypy_version}")
     lines.append(f"Pillow Version:    {pillow_version}")
     lines.append(f"Tkinter Version:   {tk_version}")
+    lines.append(f"TkinterDnD2 Version: {tkinterdnd2_version}")
+    
     lines.append("")
 
     return "\n".join(lines)
