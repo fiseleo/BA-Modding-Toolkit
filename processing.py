@@ -10,6 +10,7 @@ import re
 import tempfile
 import subprocess
 from dataclasses import dataclass
+from typing import Callable
 
 from utils import CRCUtils, no_log, get_skel_version
 
@@ -39,7 +40,7 @@ class SpineOptions:
 
 def load_bundle(
     bundle_path: Path,
-    log = no_log
+    log: Callable[[str], None] = no_log
 ) -> UnityPy.Environment | None:
     """
     尝试加载一个 Unity bundle 文件。
@@ -80,7 +81,7 @@ def load_bundle(
 def create_backup(
     original_path: Path,
     backup_mode: str = "default",
-    log = no_log
+    log: Callable[[str], None] = no_log
 ) -> bool:
     """
     创建原始文件的备份
@@ -103,7 +104,7 @@ def save_bundle(
     env: UnityPy.Environment,
     output_path: Path,
     compression: str = "lzma",
-    log=no_log
+    log: Callable[[str], None] = no_log,
 ) -> bool:
     """
     将修改后的 Unity bundle 保存到指定路径。
@@ -121,7 +122,7 @@ def save_bundle(
 def compress_bundle(
     env: UnityPy.Environment,
     compression: str = "none",
-    log=no_log
+    log: Callable[[str], None] = no_log,
 ) -> bytes:
     """
     从 UnityPy.Environment 对象生成 bundle 文件的字节数据。
@@ -149,7 +150,7 @@ def _save_and_crc(
     output_path: Path,
     original_bundle_path: Path,
     save_options: SaveOptions,
-    log=no_log,
+    log: Callable[[str], None] = no_log,
 ) -> tuple[bool, str]:
     """
     一个辅助函数，用于生成压缩bundle数据，根据需要执行CRC修正，并最终保存到文件。
@@ -201,7 +202,7 @@ def _save_and_crc(
 def upgrade_skel(
     raw_skel_data: bytes,
     spine_options: SpineOptions,
-    log=no_log
+    log: Callable[[str], None] = no_log,
 ) -> tuple[bool, bytes]:
     """
     使用外部工具升级 .skel 文件。
@@ -275,8 +276,8 @@ def upgrade_skel(
 def _handle_skel_upgrade(
     skel_bytes: bytes,
     resource_name: str,
-    spine_options: SpineOptions = None,
-    log=no_log
+    spine_options: SpineOptions | None = None,
+    log: Callable[[str], None] = no_log,
 ) -> bytes:
     """
     处理 .skel 文件的版本检查和升级。
@@ -320,7 +321,7 @@ def process_asset_replacement(
     asset_folder: Path,
     output_dir: Path,
     save_options: SaveOptions,
-    spine_options: SpineOptions = None,
+    spine_options: SpineOptions | None = None,
     log = no_log
 ):
     """
@@ -466,7 +467,7 @@ def _b2b_replace(
     old_bundle_path: Path,
     new_bundle_path: Path,
     asset_types_to_replace: set,
-    spine_options: SpineOptions = None,
+    spine_options: SpineOptions | None = None,
     log = no_log,
 ):
     """
@@ -756,8 +757,8 @@ def process_mod_update(
     output_dir: Path,
     asset_types_to_replace: set,
     save_options: SaveOptions,
-    spine_options: SpineOptions = None,
-    log = no_log,
+    spine_options: SpineOptions | None = None,
+    log: Callable[[str], None] = no_log,
 ) -> tuple[bool, str]:
     """
     自动化Mod更新流程。
@@ -828,3 +829,75 @@ def process_mod_update(
         log(f"\n❌ 严重错误: 在一键更新流程中发生错误: {e}")
         log(traceback.format_exc())
         return False, f"处理过程中发生严重错误:\n{e}"
+
+def process_batch_mod_update(
+    mod_file_list: list[Path],
+    search_paths: list[Path],
+    output_dir: Path,
+    asset_types_to_replace: set,
+    save_options: SaveOptions,
+    spine_options: SpineOptions | None,
+    log: Callable[[str], None] = no_log,
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> tuple[int, int, list[str]]:
+    """
+    执行批量Mod更新的核心逻辑。
+
+    Args:
+        mod_file_list: 待更新的旧Mod文件路径列表。
+        search_paths: 用于查找新版bundle文件的目录列表。
+        output_dir: 输出目录。
+        asset_types_to_replace: 需要替换的资源类型集合。
+        save_options: 保存和CRC修正的选项。
+        spine_options: Spine资源升级的选项。
+        log: 日志记录函数。
+        progress_callback: 进度回调函数，用于更新UI。
+                           接收 (当前索引, 总数, 文件名)。
+
+    Returns:
+        tuple[int, int, list[str]]: (成功计数, 失败计数, 失败任务详情列表)
+    """
+    total_files = len(mod_file_list)
+    success_count = 0
+    fail_count = 0
+    failed_tasks = []
+
+    for i, old_mod_path in enumerate(mod_file_list):
+        current_progress = i + 1
+        filename = old_mod_path.name
+        
+        if progress_callback:
+            progress_callback(current_progress, total_files, filename)
+
+        log("\n" + "=" * 50)
+        log(f"({current_progress}/{total_files}) 正在处理: {filename}")
+
+        new_bundle_path, find_message = find_new_bundle_path(
+            old_mod_path, search_paths, log
+        )
+
+        if not new_bundle_path:
+            log(f"❌ 查找失败: {find_message}")
+            fail_count += 1
+            failed_tasks.append(f"{filename} - 查找失败: {find_message}")
+            continue
+
+        success, process_message = process_mod_update(
+            old_mod_path=old_mod_path,
+            new_bundle_path=new_bundle_path,
+            output_dir=output_dir,
+            asset_types_to_replace=asset_types_to_replace,
+            save_options=save_options,
+            spine_options=spine_options,
+            log=log
+        )
+
+        if success:
+            log(f"✅ 处理成功: {filename}")
+            success_count += 1
+        else:
+            log(f"❌ 处理失败: {filename} - {process_message}")
+            fail_count += 1
+            failed_tasks.append(f"{filename} - {process_message}")
+
+    return success_count, fail_count, failed_tasks

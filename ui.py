@@ -278,18 +278,18 @@ class ModUpdateTab(TabFrame):
         # 接收共享的变量
         self.game_resource_dir_var: Path = game_resource_dir_var
         self.output_dir_var: Path = output_dir_var
-        self.auto_detect_subdirs = auto_detect_subdirs_var
+        self.auto_detect_subdirs: bool = auto_detect_subdirs_var
         self.enable_padding: bool = enable_padding_var
         self.enable_crc_correction: bool = enable_crc_correction_var
         self.create_backup: bool = create_backup_var
-        self.compression_method = compression_method_var
+        self.compression_method: str = compression_method_var
         self.replace_texture2d: bool = replace_texture2d_var
         self.replace_textasset: bool = replace_textasset_var
         self.replace_mesh: bool = replace_mesh_var
         self.replace_all: bool = replace_all_var
-        self.enable_spine_conversion_var = enable_spine_conversion_var
-        self.spine_converter_path_var = spine_converter_path_var
-        self.target_spine_version_var = target_spine_version_var
+        self.enable_spine_conversion_var: bool = enable_spine_conversion_var
+        self.spine_converter_path_var: Path = spine_converter_path_var
+        self.target_spine_version_var: str = target_spine_version_var
 
         # --- 模式切换 ---
         mode_frame = tk.Frame(self, bg=Theme.WINDOW_BG)
@@ -524,15 +524,10 @@ class ModUpdateTab(TabFrame):
         input_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         input_frame.columnconfigure(0, weight=1)
 
-        drop_label = tk.Label(input_frame, text="将文件或文件夹拖放到此处\n支持多选文件和文件夹", relief=tk.GROOVE, height=3, bg=Theme.MUTED_BG, fg=Theme.TEXT_NORMAL, font=Theme.INPUT_FONT, justify=tk.LEFT)
-        drop_label.grid(row=0, column=0, sticky="ew", pady=(0, 8))
-        drop_label.drop_target_register(DND_FILES)
-        drop_label.dnd_bind('<<Drop>>', self.drop_mods)
-        drop_label.bind('<Configure>', lambda e: e.widget.config(wraplength=e.width - 10))
-
+        # 直接创建Listbox作为拖放区域
         list_frame = tk.Frame(input_frame, bg=Theme.FRAME_BG)
-        list_frame.grid(row=1, column=0, sticky="nsew", pady=(5, 10))
-        input_frame.rowconfigure(1, weight=1) # 让列表框区域可以伸缩
+        list_frame.grid(row=0, column=0, sticky="nsew", pady=(0, 10))
+        input_frame.rowconfigure(0, weight=1) # 让列表框区域可以伸缩
         list_frame.columnconfigure(0, weight=1)
         
         self.file_listbox = tk.Listbox(list_frame, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, selectmode=tk.EXTENDED, height=10)
@@ -545,9 +540,17 @@ class ModUpdateTab(TabFrame):
         v_scrollbar.grid(row=0, column=1, sticky="ns")
         h_scrollbar.grid(row=1, column=0, sticky="ew")
         list_frame.rowconfigure(0, weight=1)
-
+        
+        # 将Listbox注册为拖放目标
+        self.file_listbox.drop_target_register(DND_FILES)
+        self.file_listbox.dnd_bind('<<Drop>>', self.drop_mods)
+        
+        # 添加提示文本
+        self.file_listbox.insert(tk.END, "将文件或文件夹拖放到此处")
+        self.file_listbox.insert(tk.END, "Drag & Drop bundle files or a folder to update")
+        
         button_frame = tk.Frame(input_frame, bg=Theme.FRAME_BG)
-        button_frame.grid(row=2, column=0, sticky="ew")
+        button_frame.grid(row=1, column=0, sticky="ew")
         button_frame.columnconfigure((0, 1, 2, 3), weight=1)
 
         tk.Button(button_frame, text="添加文件", command=self.browse_add_files, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT).grid(row=0, column=0, sticky="ew", padx=(0, 5))
@@ -559,6 +562,12 @@ class ModUpdateTab(TabFrame):
         run_button.pack(fill=tk.X, pady=5)
 
     def _add_files_to_list(self, file_paths: list[Path]):
+        # 第一次添加文件时，清除提示文本
+        if len(self.mod_file_list) == 0 and self.file_listbox.size() > 0:
+            # 检查列表中是否包含提示文本
+            if self.file_listbox.get(0) == "将文件或文件夹拖放到此处":
+                self.file_listbox.delete(0, tk.END)
+        
         added_count = 0
         for path in file_paths:
             if path not in self.mod_file_list:
@@ -615,6 +624,10 @@ class ModUpdateTab(TabFrame):
     def clear_list(self):
         self.mod_file_list.clear()
         self.file_listbox.delete(0, tk.END)
+        # 恢复提示文本
+        self.file_listbox.insert(tk.END, "将文件或文件夹拖放到此处")
+        self.file_listbox.insert(tk.END, "Drag & Drop bundle files or a folder to update")
+        
         self.logger.log("已清空处理列表。")
         self.logger.status("准备就绪")
 
@@ -636,8 +649,8 @@ class ModUpdateTab(TabFrame):
         self.logger.log("🚀 开始批量更新 Mod...")
         self.logger.status("正在批量处理中...")
 
+        # 1. 准备参数
         output_dir = Path(self.output_dir_var.get())
-        
         base_game_dir = Path(self.game_resource_dir_var.get())
         search_paths = self.get_game_search_dirs(base_game_dir, self.auto_detect_subdirs.get())
         
@@ -656,56 +669,36 @@ class ModUpdateTab(TabFrame):
             if self.replace_textasset.get(): asset_types_to_replace.add("TextAsset")
             if self.replace_mesh.get(): asset_types_to_replace.add("Mesh")
 
-        total_files = len(self.mod_file_list)
-        success_count = 0
-        fail_count = 0
-        failed_tasks = []
-
-        for i, old_mod_path in enumerate(self.mod_file_list):
-            self.logger.log("\n" + "="*50)
-            self.logger.log(f"({i+1}/{total_files}) 正在处理: {old_mod_path.name}")
-            self.logger.status(f"正在处理 ({i+1}/{total_files}): {old_mod_path.name}")
-
-            new_bundle_path, find_message = processing.find_new_bundle_path(
-                old_mod_path, search_paths, self.logger.log
-            )
-
-            if not new_bundle_path:
-                self.logger.log(f"❌ 查找失败: {find_message}")
-                fail_count += 1
-                failed_tasks.append(f"{old_mod_path.name} - 查找失败: {find_message}")
-                continue
-
-            save_options = processing.SaveOptions(
-                perform_crc=self.enable_crc_correction.get(),
-                enable_padding=self.enable_padding.get(),
-                compression=self.compression_method.get()
-            )
-            
-            spine_options = processing.SpineOptions(
-                enabled=self.enable_spine_conversion_var.get(),
-                converter_path=Path(self.spine_converter_path_var.get()),
-                target_version=self.target_spine_version_var.get()
-            )
-
-            success, process_message = processing.process_mod_update(
-                old_mod_path=old_mod_path,
-                new_bundle_path=new_bundle_path,
-                output_dir=output_dir,
-                asset_types_to_replace=asset_types_to_replace,
-                save_options = save_options,
-                spine_options = spine_options,
-                log=self.logger.log
-            )
-
-            if success:
-                self.logger.log(f"✅ 处理成功: {old_mod_path.name}")
-                success_count += 1
-            else:
-                self.logger.log(f"❌ 处理失败: {old_mod_path.name} - {process_message}")
-                fail_count += 1
-                failed_tasks.append(f"{old_mod_path.name} - {process_message}")
+        save_options = processing.SaveOptions(
+            perform_crc=self.enable_crc_correction.get(),
+            enable_padding=self.enable_padding.get(),
+            compression=self.compression_method.get()
+        )
         
+        spine_options = processing.SpineOptions(
+            enabled=self.enable_spine_conversion_var.get(),
+            converter_path=Path(self.spine_converter_path_var.get()),
+            target_version=self.target_spine_version_var.get()
+        )
+
+        # 更新UI状态的回调函数
+        def progress_callback(current, total, filename):
+            self.logger.status(f"正在处理 ({current}/{total}): {filename}")
+
+        # 2. 调用核心处理函数
+        success_count, fail_count, failed_tasks = processing.process_batch_mod_update(
+            mod_file_list=self.mod_file_list,
+            search_paths=search_paths,
+            output_dir=output_dir,
+            asset_types_to_replace=asset_types_to_replace,
+            save_options=save_options,
+            spine_options=spine_options,
+            log=self.logger.log,
+            progress_callback=progress_callback
+        )
+        
+        # 3. 处理结果并更新UI
+        total_files = len(self.mod_file_list)
         summary_message = f"批量处理完成！\n\n总计: {total_files} 个文件\n成功: {success_count} 个\n失败: {fail_count} 个"
         
         self.logger.log("\n" + "#"*50)
@@ -715,6 +708,7 @@ class ModUpdateTab(TabFrame):
             for task in failed_tasks:
                 self.logger.log(f"- {task}")
         self.logger.log("\n" + "#"*50)
+        
         self.logger.status("批量处理完成")
         messagebox.showinfo("批量处理完成", summary_message)
 
@@ -1422,7 +1416,7 @@ class App(tk.Frame):
 
     def setup_main_window(self):
         self.master.title("BA Modding Toolkit")
-        self.master.geometry("600x750")
+        self.master.geometry("600x789")
         self.master.configure(bg=Theme.WINDOW_BG)
 
     def _set_default_values(self):
