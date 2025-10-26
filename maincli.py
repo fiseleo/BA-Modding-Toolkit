@@ -16,6 +16,7 @@ except ImportError as e:
     print(f"错误: 无法导入必要的模块: {e}")
     print("请确保 'processing.py' 和 'utils.py' 文件与此脚本位于同一目录中。\n")
 
+    # 打印环境信息，帮助用户调试
     print(get_environment_info())
 
     sys.exit(1)
@@ -103,9 +104,9 @@ def handle_update(args, logger):
         logger.log(f"❌ 操作失败: {message}")
 
 
-def handle_replace_asset(args, logger):
-    """处理 'replace-asset' 命令的逻辑。"""
-    logger.log("--- 开始资源替换 (CLI) ---")
+def handle_asset_packing(args, logger):
+    """处理 'pack' 命令的逻辑。"""
+    logger.log("--- 开始资源打包 ---")
     
     bundle_path = Path(args.bundle)
     asset_folder = Path(args.asset_folder)
@@ -129,7 +130,7 @@ def handle_replace_asset(args, logger):
     )
 
     # 调用核心处理函数
-    success, message = processing.process_asset_replacement(
+    success, message = processing.process_asset_packing(
         target_bundle_path=bundle_path,
         asset_folder=asset_folder,
         output_dir=output_dir,
@@ -146,7 +147,7 @@ def handle_replace_asset(args, logger):
 
 def handle_crc(args, logger):
     """处理 'crc' 命令的逻辑。"""
-    logger.log("--- 开始 CRC 工具 (CLI) ---")
+    logger.log("--- 开始 CRC 工具 ---")
 
     modified_path = Path(args.modified)
     if not modified_path.is_file():
@@ -337,8 +338,8 @@ def main():
     # 根据命令调用相应的处理函数
     if args.command == 'update':
         handle_update(args, logger)
-    elif args.command == 'replace-asset':
-        handle_replace_asset(args, logger)
+    elif args.command == 'pack':
+        handle_asset_packing(args, logger)
     elif args.command == 'crc':
         handle_crc(args, logger)
     elif args.command == 'env':

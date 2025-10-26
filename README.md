@@ -108,12 +108,12 @@ This feature can also be used to port mods between different platforms, just sel
 
 The "计算CRC值" (Calculate CRC Value) button can be used to manually view the CRC checksum of a single file or two files.
 
-### 资源文件夹替换 (Asset Folder Replacement)
-1. Drag and drop or browse to select the folder containing replacement assets
+### 资源打包工具 (Asset Packer)
+1. Drag and drop or browse to select the folder containing assets to be packed
     - Supported file types: `.png` (textures), `.skel`, `.atlas` (Spine animation files)
     - Ensure asset filenames match the asset names in the target Bundle file
 2. Drag and drop or browse to select the target Bundle file that needs to be modified
-3. Click the "开始替换" (Start Replacement) button: performs the asset replacement operation
+3. Click the "开始打包" (Start Packing) button: performs the asset packing operation
 4. (Optional) After success, click "覆盖原文件" (Overwrite Original File) to apply the modifications. Please ensure the "创建备份" (Create Backup) option is enabled to prevent risks.
 
 This feature is for creating new Mods, such as quickly packaging modified assets into Bundle files.
@@ -130,15 +130,28 @@ You can add `BA-Modding-Toolkit` code (mainly `processing.py` and `utils.py`) to
 
 ```
 BA-Modding-Toolkit/
-├── main.pyw          # GUI program main entry point
-├── ui.py             # GUI interface
-├── maincli.py        # Command-line interface entry point
-├── processing.py     # Core processing logic
-├── utils.py          # Utility classes and helper functions
-├── requirements.txt  # Python dependency list
-├── config.ini        # Local configuration file (automatically generated)
-├── assets/           # Project asset folder
-└── README.md         # Project documentation (this file)
+├── main.pyw    # GUI program main entry point
+├── ui/         # GUI package
+│ ├── app.py        # Main application App class
+│ ├── base_tab.py   # TabFrame base class
+│ ├── components.py # UI components, themes, logging
+│ ├── dialogs.py    # Settings dialogs
+│ ├── utils.py      # UI related utility functions
+│ └── tabs/         # Feature tabs
+│   ├── mod_update_tab.py     # Mod Update tab
+│   ├── crc_tool_tab.py       # CRC Fix Tool tab
+│   └── asset_packer_tab.py   # Asset Packer tab
+├── maincli.py       # Command-line interface entry point
+├── processing.py    # Core processing logic
+├── utils.py         # Utility classes and helper functions
+│
+├── requirements.txt # Python dependency list
+├── config.ini       # Local configuration file (automatically generated)
+├── LICENSE          # Project license file
+├── assets/          # Project asset folder
+│ └── help/              # Images in help documentation
+├── README_zh-CN.md  # Project documentation (Chinese)
+└── README.md        # Project documentation (this file)
 ```
 
 ## Thanks

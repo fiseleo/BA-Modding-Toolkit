@@ -105,12 +105,12 @@ python maincli.py env
 
 "计算CRC值" 按钮可用于手动查看单个或两个文件的 CRC 校验值。
 
-### 资源文件夹替换
-1. 拖放或浏览选择包含替换资源的文件夹
+### 资源打包
+1. 拖放或浏览选择包含待打包资源的文件夹
     - 支持的文件类型：`.png`（贴图）、`.skel`、`.atlas`（Spine动画文件）
     - 确保资源文件名与目标 Bundle 文件中的资源名匹配
 2. 拖放或浏览选择需要修改的目标 Bundle 文件
-3. 点击"开始替换"按钮：执行资源替换操作
+3. 点击"开始打包"按钮：执行资源打包操作
 4. （可选）成功后点击"覆盖原文件"应用修改。请确保开启了"创建备份"选项以防止风险。
 
 此功能适用于制作新的 Mod，例如快速将修改后的资源打包到 Bundle 文件中。
@@ -127,15 +127,28 @@ python maincli.py env
 
 ```
 BA-Modding-Toolkit/
-├── main.pyw          # GUI程序主入口
-├── ui.py             # 图形界面
-├── maincli.py        # 命令行接口主入口
-├── processing.py     # 核心处理逻辑
-├── utils.py          # 工具类和辅助函数
-├── requirements.txt  # Python依赖列表
-├── config.ini        # 本地配置文件（自动生成）
-├── assets/           # 项目资源文件夹
-└── README_zh-CN.md   # 项目说明文档（简体中文）
+├── main.pyw    # GUI程序主入口
+├── ui/         # 图形界面包
+│ ├── app.py        # 主应用 App 类
+│ ├── base_tab.py   # TabFrame 基类
+│ ├── components.py # UI组件、主题、日志
+│ ├── dialogs.py    # 设置对话框
+│ ├── utils.py      # UI相关工具函数
+│ └── tabs/         # 功能标签页
+│   ├── mod_update_tab.py     # Mod 更新标签页
+│   ├── crc_tool_tab.py       # CRC 修正工具标签页
+│   └── asset_packer_tab.py   # 资源文件夹打包标签页
+├── maincli.py       # 命令行接口主入口
+├── processing.py    # 核心处理逻辑
+├── utils.py         # 工具类和辅助函数
+│
+├── requirements.txt # Python依赖列表
+├── config.ini       # 本地配置文件（自动生成）
+├── LICENSE          # 项目许可证文件
+├── assets/          # 项目资源文件夹
+│ └── help/              # 帮助文档中的图片
+├── README_zh-CN.md  # 项目说明文档（中文，本文件）
+└── README.md        # 项目说明文档
 ```
 
 ## 鸣谢
@@ -144,7 +157,7 @@ BA-Modding-Toolkit/
 - [kalina](https://github.com/kalinaowo): 创建了 `CRCUtils` 类的原型，也是 BAMT 项目的起点。
 - [afiseleo](https://github.com/fiseleo): 协助开发命令行版本。
 - [wang606](https://github.com/wang606): Spine 版本转换功能基于 [SpineSkeletonDataConverter](https://github.com/wang606/SpineSkeletonDataConverter) 项目。
-    - SpineSkeletonDataConverter 是一个独立的第三方程序，当下载并使用时请遵守其协议。BAMT 不包含该程序的任何代码或文件，也不负责其使用过程中可能出现的任何问题。
+    - SpineSkeletonDataConverter 是一个独立的第三方程序，当下载并使用时请遵守其协议。BAMT 不会包含、分发该程序的任何代码或文件，也不负责其使用过程中可能出现的任何问题。
 
 本项目使用了以下优秀的第三方库：
 

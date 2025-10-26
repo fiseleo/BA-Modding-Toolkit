@@ -14,12 +14,25 @@ from typing import Callable, Any, Literal
 
 from utils import CRCUtils, no_log, get_skel_version
 
-# 类型别名
-AssetKey = str | int | tuple[str, str]  # 可以是资源名称、path_id 或 (名称, 类型) 元组
-AssetContent = bytes | Image.Image | None  # 资源内容可以是字节数据、PIL图像或None
-KeyFunc = Callable[[UnityPy.classes.Object, Any], AssetKey]  # 从对象生成资源键的函数
-LogFunc = Callable[[str], None]  # 日志函数类型
-CompressionType = Literal["lzma", "lz4", "original", "none"]  # 压缩类型
+# -------- 类型别名 ---------
+
+# AssetKey 表示资源的唯一标识符，在不同的流程中可以使用不同的键
+# str 类型 表示资源名称，在资源打包工具中使用
+# int 类型 表示 path_id
+# tuple[str, str] 类型 表示 (名称, 类型) 元组
+AssetKey = str | int | tuple[str, str]
+
+# 资源的具体内容，可以是字节数据、PIL图像或None
+AssetContent = bytes | Image.Image | None  
+
+# 从对象生成资源键的函数，接收UnityPy对象和一个额外参数，返回该资源的键
+KeyGeneratorFunc = Callable[[UnityPy.classes.Object, Any], AssetKey]
+
+# 日志函数类型
+LogFunc = Callable[[str], None]  
+
+# 压缩类型
+CompressionType = Literal["lzma", "lz4", "original", "none"]  
 
 @dataclass
 class SaveOptions:
@@ -134,20 +147,20 @@ def compress_bundle(
     """
     从 UnityPy.Environment 对象生成 bundle 文件的字节数据。
     compression: 用于控制压缩方式。
-                 - "lzma": (默认) 使用 LZMA 压缩。
+                 - "lzma": 使用 LZMA 压缩。
                  - "lz4": 使用 LZ4 压缩。
                  - "original": 保留原始压缩方式。
                  - "none": 不进行压缩。
     """
     save_kwargs = {}
     if compression == "original":
-        log("压缩方式: 保持原始设置")
+        log("   > 压缩方式: 保持原始设置")
         # Not passing the 'packer' argument preserves the original compression.
     elif compression == "none":
-        log("压缩方式: 不压缩")
+        log("    > 压缩方式: 不压缩")
         save_kwargs['packer'] = ""  # An empty string typically means no compression.
     else:
-        log(f"压缩方式: {compression.upper()}")
+        log(f"    > 压缩方式: {compression.upper()}")
         save_kwargs['packer'] = compression
     
     return env.file.save(**save_kwargs)
@@ -326,7 +339,7 @@ def _handle_skel_upgrade(
 def _apply_replacements(
     env: UnityPy.Environment,
     replacement_map: dict[AssetKey, AssetContent],
-    key_func: KeyFunc,
+    key_func: KeyGeneratorFunc,
     log: LogFunc = no_log,
 ) -> tuple[int, list[str]]:
     """
@@ -380,7 +393,7 @@ def _apply_replacements(
 
     return replacement_count, replaced_assets_log
 
-def process_asset_replacement(
+def process_asset_packing(
     target_bundle_path: Path,
     asset_folder: Path,
     output_dir: Path,
@@ -389,17 +402,18 @@ def process_asset_replacement(
     log: LogFunc = no_log,
 ) -> tuple[bool, str]:
     """
-    从指定文件夹替换bundle中的资源。
-    支持替换 .png, .skel, .atlas 文件。
+    从指定文件夹中，将同名的资源打包到指定的 Bundle 中。
+    支持 .png, .skel, .atlas 文件。
     - .png 文件将替换同名的 Texture2D 资源 (文件名不含后缀)。
     - .skel 和 .atlas 文件将替换同名的 TextAsset 资源 (文件名含后缀)。
-    可选地升级Spine动画资源的Skel版本。
+    可选地升级 Spine 动画的 Skel 资源版本。
     此函数将生成的文件保存在工作目录中，以便后续进行"覆盖原文件"操作。
+    因为打包资源的操作在原理上是替换目标Bundle内的资源，因此里面可能有混用打包和替换的叫法。
     返回 (是否成功, 状态消息) 的元组。
     
     Args:
         target_bundle_path: 目标Bundle文件的路径
-        asset_folder: 包含替换资源的文件夹路径
+        asset_folder: 包含待打包资源的文件夹路径
         output_dir: 输出目录，用于保存生成的更新后文件
         save_options: 保存和CRC修正的选项
         spine_options: Spine资源升级的选项
@@ -453,13 +467,13 @@ def process_asset_replacement(
         replacement_count, _ = _apply_replacements(env, replacement_map, key_func, log)
 
         if replacement_count == 0:
-            log("⚠️ 警告: 没有执行任何成功的资源替换。")
+            log("⚠️ 警告: 没有执行任何成功的资源打包。")
             log("请检查：\n1. 文件名是否与 bundle 内的资源名完全匹配。\n2. bundle 文件是否正确。")
-            return False, "没有找到任何名称匹配的资源进行替换。"
+            return False, "没有找到任何名称匹配的资源进行打包。"
         
-        log(f"\n替换完成: 成功替换 {replacement_count} / {original_tasks_count} 个资源。")
+        log(f"\n打包完成: 成功打包 {replacement_count} / {original_tasks_count} 个资源。")
 
-        # 报告未被替换的文件
+        # 报告未被打包的文件
         unmatched_keys = set(replacement_map.keys()) - {key for key, _ in replacement_map.items() if key not in [obj.read().m_Name for obj in env.objects]}
         if unmatched_keys:
             log("⚠️ 警告: 以下文件未在bundle中找到对应的资源:")
@@ -483,17 +497,17 @@ def process_asset_replacement(
 
         log(f"最终文件已保存至: {output_path}")
         log(f"\n🎉 处理完成！")
-        return True, f"处理完成！\n成功替换 {replacement_count} 个资源。\n\n文件已保存至工作目录，现在可以点击“覆盖原文件”按钮应用更改。"
+        return True, f"处理完成！\n成功打包 {replacement_count} 个资源。\n\n文件已保存至工作目录，现在可以点击“覆盖原文件”按钮应用更改。"
 
     except Exception as e:
         log(f"\n❌ 严重错误: 处理 bundle 文件时发生错误: {e}")
         log(traceback.format_exc())
         return False, f"处理过程中发生严重错误:\n{e}"
 
-def _build_replacement_map_from_bundle(
+def _extract_assets_from_bundle(
     env: UnityPy.Environment,
     asset_types_to_replace: set[str],
-    key_func: KeyFunc,
+    key_func: KeyGeneratorFunc,
     spine_options: SpineOptions | None,
     log: LogFunc = no_log,
 ) -> dict[AssetKey, AssetContent]:
@@ -559,7 +573,7 @@ def _b2b_replace(
         return None, 0
 
     # 定义匹配策略
-    strategies: list[tuple[str, KeyFunc]] = [
+    strategies: list[tuple[str, KeyGeneratorFunc]] = [
         ('path_id', lambda obj, data: obj.path_id),
         ('name_type', lambda obj, data: (data.m_Name, obj.type.name))
     ]
@@ -569,7 +583,7 @@ def _b2b_replace(
         
         # 2. 根据当前策略从旧版 bundle 构建“替换清单”
         log("  > 从旧版 bundle 提取资源...")
-        old_assets_map = _build_replacement_map_from_bundle(
+        old_assets_map = _extract_assets_from_bundle(
             old_env, asset_types_to_replace, key_func, spine_options, log
         )
         
@@ -826,6 +840,7 @@ def process_batch_mod_update(
     fail_count = 0
     failed_tasks = []
 
+    # 遍历每个旧Mod文件
     for i, old_mod_path in enumerate(mod_file_list):
         current_progress = i + 1
         filename = old_mod_path.name
@@ -836,6 +851,7 @@ def process_batch_mod_update(
         log("\n" + "=" * 50)
         log(f"({current_progress}/{total_files}) 正在处理: {filename}")
 
+        # 查找对应的新资源文件
         new_bundle_path, find_message = find_new_bundle_path(
             old_mod_path, search_paths, log
         )
@@ -846,6 +862,7 @@ def process_batch_mod_update(
             failed_tasks.append(f"{filename} - 查找失败: {find_message}")
             continue
 
+        # 执行Mod更新处理
         success, process_message = process_mod_update(
             old_mod_path=old_mod_path,
             new_bundle_path=new_bundle_path,
