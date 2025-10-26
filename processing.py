@@ -10,16 +10,23 @@ import re
 import tempfile
 import subprocess
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Any, Literal
 
 from utils import CRCUtils, no_log, get_skel_version
+
+# 类型别名
+AssetKey = str | int | tuple[str, str]  # 可以是资源名称、path_id 或 (名称, 类型) 元组
+AssetContent = bytes | Image.Image | None  # 资源内容可以是字节数据、PIL图像或None
+KeyFunc = Callable[[UnityPy.classes.Object, Any], AssetKey]  # 从对象生成资源键的函数
+LogFunc = Callable[[str], None]  # 日志函数类型
+CompressionType = Literal["lzma", "lz4", "original", "none"]  # 压缩类型
 
 @dataclass
 class SaveOptions:
     """封装了保存、压缩和CRC修正相关的选项。"""
     perform_crc: bool = True
     enable_padding: bool = False
-    compression: str = "lzma"
+    compression: CompressionType = "lzma"
 
 @dataclass
 class SpineOptions:
@@ -40,7 +47,7 @@ class SpineOptions:
 
 def load_bundle(
     bundle_path: Path,
-    log: Callable[[str], None] = no_log
+    log: LogFunc = no_log
 ) -> UnityPy.Environment | None:
     """
     尝试加载一个 Unity bundle 文件。
@@ -81,7 +88,7 @@ def load_bundle(
 def create_backup(
     original_path: Path,
     backup_mode: str = "default",
-    log: Callable[[str], None] = no_log
+    log: LogFunc = no_log,
 ) -> bool:
     """
     创建原始文件的备份
@@ -103,8 +110,8 @@ def create_backup(
 def save_bundle(
     env: UnityPy.Environment,
     output_path: Path,
-    compression: str = "lzma",
-    log: Callable[[str], None] = no_log,
+    compression: CompressionType = "lzma",
+    log: LogFunc = no_log,
 ) -> bool:
     """
     将修改后的 Unity bundle 保存到指定路径。
@@ -121,8 +128,8 @@ def save_bundle(
 
 def compress_bundle(
     env: UnityPy.Environment,
-    compression: str = "none",
-    log: Callable[[str], None] = no_log,
+    compression: CompressionType = "none",
+    log: LogFunc = no_log,
 ) -> bytes:
     """
     从 UnityPy.Environment 对象生成 bundle 文件的字节数据。
@@ -150,7 +157,7 @@ def _save_and_crc(
     output_path: Path,
     original_bundle_path: Path,
     save_options: SaveOptions,
-    log: Callable[[str], None] = no_log,
+    log: LogFunc = no_log,
 ) -> tuple[bool, str]:
     """
     一个辅助函数，用于生成压缩bundle数据，根据需要执行CRC修正，并最终保存到文件。
@@ -202,7 +209,7 @@ def _save_and_crc(
 def upgrade_skel(
     raw_skel_data: bytes,
     spine_options: SpineOptions,
-    log: Callable[[str], None] = no_log,
+    log: LogFunc = no_log,
 ) -> tuple[bool, bytes]:
     """
     使用外部工具升级 .skel 文件。
@@ -277,7 +284,7 @@ def _handle_skel_upgrade(
     skel_bytes: bytes,
     resource_name: str,
     spine_options: SpineOptions | None = None,
-    log: Callable[[str], None] = no_log,
+    log: LogFunc = no_log,
 ) -> bytes:
     """
     处理 .skel 文件的版本检查和升级。
@@ -316,14 +323,71 @@ def _handle_skel_upgrade(
     # 默认返回原始字节
     return skel_bytes
 
+def _apply_replacements(
+    env: UnityPy.Environment,
+    replacement_map: dict[AssetKey, AssetContent],
+    key_func: KeyFunc,
+    log: LogFunc = no_log,
+) -> tuple[int, list[str]]:
+    """
+    将“替换清单”中的资源应用到目标环境中。
+
+    Args:
+        env: 目标 UnityPy 环境。
+        replacement_map: 资源替换清单，格式为 { asset_key: content }。
+        key_func: 用于从目标环境中的对象生成 asset_key 的函数。
+        log: 日志记录函数。
+
+    Returns:
+        一个元组 (成功替换的数量, 成功替换的资源日志列表)。
+    """
+    replacement_count = 0
+    replaced_assets_log = []
+    
+    # 创建一个副本用于操作，因为我们会从中移除已处理的项
+    tasks = replacement_map.copy()
+
+    for obj in env.objects:
+        if not tasks:  # 如果清单空了，就提前退出
+            break
+        
+        data = obj.read()
+        asset_key = key_func(obj, data)
+
+        if asset_key in tasks:
+            content = tasks.pop(asset_key)
+            resource_name = getattr(data, 'm_Name', f"<{obj.type.name} 资源>")
+            
+            try:
+                if obj.type.name == "Texture2D":
+                    data.image = content
+                    data.save()
+                elif obj.type.name == "TextAsset":
+                    # content 是 bytes，需要解码成 str
+                    data.m_Script = content.decode("utf-8", "surrogateescape")
+                    data.save()
+                elif obj.type.name == "Mesh":
+                    obj.set_raw_data(content)
+                else: # 适用于 "ALL" 模式下的其他类型
+                    obj.set_raw_data(content)
+
+                replacement_count += 1
+                log_message = f"  - {resource_name} ({obj.type.name})"
+                replaced_assets_log.append(log_message)
+
+            except Exception as e:
+                log(f"  ❌ 错误: 替换资源 '{resource_name}' ({obj.type.name} 类型) 时发生错误: {e}")
+
+    return replacement_count, replaced_assets_log
+
 def process_asset_replacement(
     target_bundle_path: Path,
     asset_folder: Path,
     output_dir: Path,
     save_options: SaveOptions,
     spine_options: SpineOptions | None = None,
-    log = no_log
-):
+    log: LogFunc = no_log,
+) -> tuple[bool, str]:
     """
     从指定文件夹替换bundle中的资源。
     支持替换 .png, .skel, .atlas 文件。
@@ -346,87 +410,47 @@ def process_asset_replacement(
         if not env:
             return False, "无法加载目标 Bundle 文件，即使在尝试移除潜在的 CRC 补丁后也是如此。请检查文件是否损坏。"
         
-        # 使用字典来优化查找，按资源类型分类
-        tasks_by_type = {
-            "Texture2D": {},
-            "TextAsset": {}
-        }
-        
+        # 1. 从文件夹构建"替换清单"
+        replacement_map: dict[AssetKey, AssetContent] = {}
         supported_extensions = [".png", ".skel", ".atlas"]
-        input_files = [f for f in os.listdir(asset_folder) if f.lower().endswith(tuple(supported_extensions))]
+        input_files = [f for f in asset_folder.iterdir() if f.is_file() and f.suffix.lower() in supported_extensions]
 
         if not input_files:
             msg = f"在指定文件夹中没有找到任何支持的文件 ({', '.join(supported_extensions)})。"
             log(f"⚠️ 警告: {msg}")
             return False, msg
 
-        # 准备替换任务
-        for filename in input_files:
-            full_path = os.path.join(asset_folder, filename)
-            if filename.lower().endswith(".png"):
-                asset_name = os.path.splitext(filename)[0]
-                tasks_by_type["Texture2D"][asset_name] = full_path
-            elif filename.lower().endswith((".skel", ".atlas")):
-                asset_name = filename # 包含后缀
-                tasks_by_type["TextAsset"][asset_name] = full_path
+        for file_path in input_files:
+            asset_key: AssetKey
+            content: AssetContent
+            if file_path.suffix.lower() == ".png":
+                asset_key = file_path.stem
+                content = Image.open(file_path).convert("RGBA")
+            else: # .skel, .atlas
+                asset_key = file_path.name
+                with open(file_path, "rb") as f:
+                    content = f.read()
+                
+                if file_path.suffix.lower() == '.skel':
+                    content = _handle_skel_upgrade(
+                        skel_bytes=content,
+                        resource_name=asset_key,
+                        spine_options=spine_options,
+                        log=log
+                    )
+            replacement_map[asset_key] = content
         
-        original_tasks_count = len(tasks_by_type["Texture2D"]) + len(tasks_by_type["TextAsset"])
+        original_tasks_count = len(replacement_map)
         log(f"找到 {original_tasks_count} 个待处理文件，正在扫描 bundle 并进行替换...")
-        replacement_count = 0
 
-        for obj in env.objects:
-            # 如果所有任务都完成了，就提前退出循环
-            if replacement_count == original_tasks_count:
-                break
+        # 2. 定义用于在 bundle 中查找资源的 key 生成函数
+        def key_func(obj: UnityPy.classes.Object, data: Any) -> AssetKey | None:
+            if obj.type.name in ["Texture2D", "TextAsset"]:
+                return data.m_Name
+            return None
 
-            if obj.type.name == "Texture2D":
-                data = obj.read()
-                # 避免重复处理
-                image_path = tasks_by_type["Texture2D"].pop(data.m_Name, None)
-                if image_path:
-                    log(f"  > 找到匹配资源 '{data.m_Name}' (Texture2D)，准备替换...")
-                    try:
-                        img = Image.open(image_path).convert("RGBA")
-                        data.image = img
-                        data.save()
-                        log(f"    ✅ 成功: 资源 '{data.m_Name}' 已被替换。")
-                        replacement_count += 1
-                    except Exception as e:
-                        log(f"    ❌ 错误: 替换资源 '{data.m_Name}' 时发生错误: {e}")
-                        # 如果替换失败，把任务加回去以便在最终报告中显示
-                        tasks_by_type["Texture2D"][data.m_Name] = image_path
-
-            elif obj.type.name == "TextAsset":
-                data = obj.read()
-                file_path = tasks_by_type["TextAsset"].pop(data.m_Name, None)
-                if file_path:
-                    log(f"  > 找到匹配资源 '{data.m_Name}' (TextAsset)，准备替换...")
-                    try:
-                        # 以二进制模式读取文件内容
-                        with open(file_path, "rb") as f:
-                            content_bytes = f.read()
-                        
-                        # 如果是 .skel 文件，尝试进行升级
-                        if data.m_Name.lower().endswith('.skel'):
-                            content_bytes = _handle_skel_upgrade(
-                                skel_bytes=content_bytes,
-                                resource_name=data.m_Name,
-                                spine_options=spine_options,
-                                log=log
-                            )
-                        
-                        # 将读取到的 bytes 解码为 str，并使用正确的 .m_Script 属性
-                        # 使用 "surrogateescape" 错误处理程序以确保二进制数据也能被正确处理
-                        data.m_Script = content_bytes.decode("utf-8", "surrogateescape")
-                        
-                        # 标记对象已更改，以便在保存时写入新数据
-                        data.save()
-                        
-                        log(f"    ✅ 成功: 资源 '{data.m_Name}' 已被替换。")
-                        replacement_count += 1
-                    except Exception as e:
-                        log(f"    ❌ 错误: 替换资源 '{data.m_Name}' 时发生错误: {e}")
-                        tasks_by_type["TextAsset"][data.m_Name] = file_path
+        # 3. 应用替换
+        replacement_count, _ = _apply_replacements(env, replacement_map, key_func, log)
 
         if replacement_count == 0:
             log("⚠️ 警告: 没有执行任何成功的资源替换。")
@@ -436,12 +460,15 @@ def process_asset_replacement(
         log(f"\n替换完成: 成功替换 {replacement_count} / {original_tasks_count} 个资源。")
 
         # 报告未被替换的文件
-        unmatched_tasks = tasks_by_type["Texture2D"].items() | tasks_by_type["TextAsset"].items()
-        if unmatched_tasks:
+        unmatched_keys = set(replacement_map.keys()) - {key for key, _ in replacement_map.items() if key not in [obj.read().m_Name for obj in env.objects]}
+        if unmatched_keys:
             log("⚠️ 警告: 以下文件未在bundle中找到对应的资源:")
-            for asset_name, file_path in unmatched_tasks:
-                log(f"  - {Path(file_path).name} (尝试匹配: '{asset_name}')")
+            # 为了找到原始文件名，我们需要反向查找
+            original_filenames = {f.stem if f.suffix.lower() == '.png' else f.name: f.name for f in input_files}
+            for key in unmatched_keys:
+                log(f"  - {original_filenames.get(key, key)} (尝试匹配: '{key}')")
 
+        # 4. 保存和修正
         output_path = output_dir / target_bundle_path.name
         save_ok, save_message = _save_and_crc(
             env=env,
@@ -463,13 +490,57 @@ def process_asset_replacement(
         log(traceback.format_exc())
         return False, f"处理过程中发生严重错误:\n{e}"
 
+def _build_replacement_map_from_bundle(
+    env: UnityPy.Environment,
+    asset_types_to_replace: set[str],
+    key_func: KeyFunc,
+    spine_options: SpineOptions | None,
+    log: LogFunc = no_log,
+) -> dict[AssetKey, AssetContent]:
+    """
+    从源 bundle 的 env 构建替换清单
+    即其他函数中使用的replacement_map
+    """
+    replacement_map: dict[AssetKey, AssetContent] = {}
+    replace_all = "ALL" in asset_types_to_replace
+
+    for obj in env.objects:
+        if replace_all or (obj.type.name in asset_types_to_replace):
+            data = obj.read()
+            asset_key = key_func(obj, data)
+            content = None
+            resource_name = getattr(data, 'm_Name', f"<{obj.type.name} 资源>")
+
+            if obj.type.name == "Texture2D":
+                content = data.image
+            elif obj.type.name == "TextAsset":
+                asset_bytes = data.m_Script.encode("utf-8", "surrogateescape")
+                if resource_name.lower().endswith('.skel'):
+                    content = _handle_skel_upgrade(
+                        skel_bytes=asset_bytes,
+                        resource_name=resource_name,
+                        spine_options=spine_options,
+                        log=log
+                    )
+                else:
+                    content = asset_bytes
+            elif obj.type.name == "Mesh":
+                content = obj.get_raw_data()
+            elif replace_all:
+                content = obj.get_raw_data()
+
+            if content is not None:
+                replacement_map[asset_key] = content
+    
+    return replacement_map
+
 def _b2b_replace(
     old_bundle_path: Path,
     new_bundle_path: Path,
-    asset_types_to_replace: set,
+    asset_types_to_replace: set[str],
     spine_options: SpineOptions | None = None,
-    log = no_log,
-):
+    log: LogFunc = no_log,
+) -> tuple[UnityPy.Environment | None, int]:
     """
     执行 Bundle-to-Bundle 的核心替换逻辑。
     asset_types_to_replace: 要替换的资源类型集合（如 {"Texture2D", "TextAsset", "Mesh"} 的子集 或 {"ALL"}）
@@ -488,58 +559,19 @@ def _b2b_replace(
         return None, 0
 
     # 定义匹配策略
-    # 每个策略是一个元组: (策略名, 获取资源key的函数)
-    strategies = [
-        (
-            'path_id',  # 根据path_id来匹配
-            lambda obj, data: obj.path_id
-        ),
-        (
-            'name_type', # 根据资源名称和类型来匹配
-            lambda obj, data: (data.m_Name, obj.type.name)
-        )
+    strategies: list[tuple[str, KeyFunc]] = [
+        ('path_id', lambda obj, data: obj.path_id),
+        ('name_type', lambda obj, data: (data.m_Name, obj.type.name))
     ]
 
-    replace_all = "ALL" in asset_types_to_replace
     for name, key_func in strategies:
-        log(f"正在尝试使用 '{name}' 策略进行匹配")
+        log(f"\n正在尝试使用 '{name}' 策略进行匹配")
         
-        # 2. 根据当前策略从旧版 bundle 提取资源
-        old_assets_map = {}
+        # 2. 根据当前策略从旧版 bundle 构建“替换清单”
         log("  > 从旧版 bundle 提取资源...")
-        for obj in old_env.objects:
-            if replace_all or (obj.type.name in asset_types_to_replace):
-                data = obj.read() # 资源数据
-                asset_key = key_func(obj, data)
-                content = None # 替换后的资源内容
-                resource_name = getattr(data, 'm_Name', f"<{obj.type.name}资源>")
-
-                if obj.type.name == "Texture2D":
-                    content = data.image
-                elif obj.type.name == "TextAsset":
-                    # 从 m_Script 获取 TextAsset 的原始字节内容
-                    asset_bytes = data.m_Script.encode("utf-8", "surrogateescape")
-                    
-                    # 如果是 .skel 文件，尝试进行升级
-                    if resource_name.lower().endswith('.skel'):
-                        content = _handle_skel_upgrade(
-                            skel_bytes=asset_bytes,
-                            resource_name=resource_name,
-                            spine_options=spine_options,
-                            log=log
-                        )
-                    else:
-                        content = asset_bytes
-                elif obj.type.name == "Mesh":
-                    # 对于 Mesh 类型，直接使用原始数据
-                    content = obj.get_raw_data()
-                else:
-                    # 为其他可能的类型提供备用方案
-                    if replace_all:
-                        content = obj.get_raw_data()
-
-                if content is not None:
-                    old_assets_map[asset_key] = content
+        old_assets_map = _build_replacement_map_from_bundle(
+            old_env, asset_types_to_replace, key_func, spine_options, log
+        )
         
         if not old_assets_map:
             log(f"  > ⚠️ 警告: 使用 '{name}' 策略未在旧版 bundle 中找到任何指定类型的资源。")
@@ -547,45 +579,16 @@ def _b2b_replace(
 
         log(f"  > 提取完成: 使用 '{name}' 策略从旧版 bundle 提取了 {len(old_assets_map)} 个资源。")
 
-        # 3. 根据当前策略执行替换
-        replacement_count = 0
-        replaced_assets_log = []
+        # 3. 根据当前策略应用替换
         log("  > 向新版 bundle 写入资源...")
         
-        for obj in new_env.objects:
-            if replace_all or (obj.type.name in asset_types_to_replace):
-                new_data = obj.read()
-                asset_key = key_func(obj, new_data)
-
-                if asset_key in old_assets_map:
-                    old_content = old_assets_map.pop(asset_key) # 使用pop避免重复替换
-                    # 安全地获取资源名称，避免某些类型没有 m_Name 属性
-                    resource_name = getattr(new_data, 'm_Name', f"<{obj.type.name}资源>")
-                    try:
-                        if obj.type.name == "Texture2D":
-                            new_data.image = old_content
-                            new_data.save()
-                        elif obj.type.name == "TextAsset":
-                            # old_content 是我们从旧包里提取的 bytes
-                            # 我们需要将其解码为字符串，然后赋给 m_Script 属性
-                            new_data.m_Script = old_content.decode("utf-8", "surrogateescape")
-                            new_data.save()
-                        elif obj.type.name == "Mesh":
-                            # 对于 Mesh 类型，直接使用原始数据
-                            obj.set_raw_data(old_content)
-                        else:
-                            obj.set_raw_data(old_content)
-
-                        replacement_count += 1
-                        replaced_assets_log.append(f"  - {resource_name} ({obj.type.name})")
-
-                    except Exception as e:
-                        log(f"  ❌ 错误: 替换资源 '{resource_name}' ({obj.type.name}类型)时发生错误: {e}")
-
+        replacement_count, replaced_logs \
+        = _apply_replacements(new_env, old_assets_map, key_func, log)
+        
         # 4. 如果当前策略成功替换了至少一个资源，就结束
         if replacement_count > 0:
             log(f"\n✅ 策略 '{name}' 成功替换了 {replacement_count} 个资源:")
-            for item in replaced_assets_log:
+            for item in replaced_logs:
                 log(item)
             return new_env, replacement_count
 
@@ -595,47 +598,8 @@ def _b2b_replace(
     log(f"\n⚠️ 警告: 所有匹配策略均未能在新版 bundle 中找到可替换的资源 ({', '.join(asset_types_to_replace)})。")
     return None, 0
 
-def process_bundle_to_bundle_replacement(
-    new_bundle_path: Path, 
-    old_bundle_path: Path, 
-    output_path: Path, 
-    create_backup_file: bool = True,
-    compression: str = "lzma",
-    log = no_log
-):
-    """
-    从旧版Bundle包替换指定资源类型到新版Bundle包。
-    对_b2b_replace函数的封装。
-    """
-    try:
-        if create_backup_file:
-            if not create_backup(new_bundle_path, log, "b2b"):
-                return False, "创建备份失败，操作已终止。"
 
-        asset_types = {"Texture2D"}
-        modified_env, replacement_count = _b2b_replace(old_bundle_path, new_bundle_path, asset_types, log)
-
-        if not modified_env:
-            return False, "Bundle-to-Bundle 替换过程失败，请检查日志获取详细信息。"
-        
-        if replacement_count == 0:
-            log("\n⚠️ 警告: 没有找到任何名称匹配的 Texture2D 资源进行替换。")
-            log("请确认新旧两个bundle包中确实存在同名的贴图资源。")
-            return False, "没有找到任何名称匹配的 Texture2D 资源进行替换。"
-
-        if save_bundle(modified_env, output_path, compression, log):
-            log("\n🎉 处理完成！")
-            return True, f"处理完成！\n成功恢复/替换了 {replacement_count} 个资源。\n\n文件已保存至:\n{output_path}"
-        else:
-            return False, "保存文件失败，请检查日志获取详细信息。"
-
-    except Exception as e:
-        log(f"\n❌ 严重错误: 处理 bundle 文件时发生错误: {e}")
-        log(traceback.format_exc())
-        return False, f"处理过程中发生严重错误:\n{e}"
-
-
-def get_filename_prefix(filename: str, log = no_log) -> tuple[str | None, str]:
+def get_filename_prefix(filename: str, log: LogFunc = no_log) -> tuple[str | None, str]:
     """
     从旧版Mod文件名中提取用于搜索新版文件的前缀。
     返回 (前缀字符串, 状态消息) 的元组。
@@ -677,7 +641,7 @@ def get_filename_prefix(filename: str, log = no_log) -> tuple[str | None, str]:
 def find_new_bundle_path(
     old_mod_path: Path,
     game_resource_dir: Path | list[Path],
-    log = no_log
+    log: LogFunc = no_log,
 ) -> tuple[Path | None, str]:
     """
     根据旧版Mod文件，在游戏资源目录中智能查找对应的新版文件。
@@ -755,10 +719,10 @@ def process_mod_update(
     old_mod_path: Path,
     new_bundle_path: Path,
     output_dir: Path,
-    asset_types_to_replace: set,
+    asset_types_to_replace: set[str],
     save_options: SaveOptions,
     spine_options: SpineOptions | None = None,
-    log: Callable[[str], None] = no_log,
+    log: LogFunc = no_log,
 ) -> tuple[bool, str]:
     """
     自动化Mod更新流程。
@@ -834,10 +798,10 @@ def process_batch_mod_update(
     mod_file_list: list[Path],
     search_paths: list[Path],
     output_dir: Path,
-    asset_types_to_replace: set,
+    asset_types_to_replace: set[str],
     save_options: SaveOptions,
     spine_options: SpineOptions | None,
-    log: Callable[[str], None] = no_log,
+    log: LogFunc = no_log,
     progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> tuple[int, int, list[str]]:
     """
