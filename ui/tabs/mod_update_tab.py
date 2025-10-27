@@ -94,17 +94,22 @@ class ModUpdateTab(TabFrame):
         auto_find_frame = tk.Frame(new_mod_frame, bg=Theme.FRAME_BG)
         auto_find_frame.pack(fill=tk.X, pady=(0, 8), before=self.new_mod_label)
         tk.Label(auto_find_frame, text="查找路径:", bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL).pack(side=tk.LEFT, padx=(0,5))
-        tk.Entry(auto_find_frame, textvariable=self.game_resource_dir_var, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1, state='readonly').pack(side=tk.LEFT, fill=tk.X, expand=True)
+        UIComponents.create_textbox_entry(
+            auto_find_frame, 
+            textvariable=self.game_resource_dir_var,
+            placeholder_text="游戏资源目录",
+            readonly=True
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # 操作按钮区域
         action_button_frame = tk.Frame(parent)
         action_button_frame.pack(fill=tk.X, pady=10)
         action_button_frame.grid_columnconfigure((0, 1), weight=1)
 
-        run_button = tk.Button(action_button_frame, text="开始更新", command=self.run_update_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8)
-        run_button.grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=2)
+        self.run_button = UIComponents.create_button(action_button_frame, "开始更新", self.run_update_thread, bg_color=Theme.BUTTON_SUCCESS_BG, padx=15, pady=8)
+        self.run_button.grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=2)
         
-        self.replace_button = tk.Button(action_button_frame, text="覆盖原文件", command=self.replace_original_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=15, pady=8, state=tk.DISABLED)
+        self.replace_button = UIComponents.create_button(action_button_frame, "覆盖原文件", self.replace_original_thread, bg_color=Theme.BUTTON_DANGER_BG, padx=15, pady=8, state="disabled")
         self.replace_button.grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=2)
 
     def drop_old_mod(self, event):

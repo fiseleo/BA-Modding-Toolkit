@@ -84,6 +84,106 @@ class UIComponents:
     """一个辅助类，用于创建通用的UI组件，以减少重复代码。"""
 
     @staticmethod
+    def create_textbox_entry(parent, textvariable, width=None, placeholder_text=None, readonly=False):
+        """创建统一的文本输入框组件"""
+        entry = tk.Entry(
+            parent, 
+            textvariable=textvariable, 
+            font=Theme.INPUT_FONT, 
+            bg=Theme.INPUT_BG, 
+            fg=Theme.TEXT_NORMAL, 
+            relief=tk.SUNKEN, 
+            bd=1,
+            width=width
+        )
+        
+        # 如果设置为只读，设置状态为readonly
+        if readonly:
+            entry.config(state='readonly')
+        
+        # 如果有占位符文本，添加占位符功能
+        if placeholder_text:
+            def on_focus_in(event):
+                if entry.get() == placeholder_text:
+                    entry.delete(0, tk.END)
+                    entry.config(fg=Theme.TEXT_NORMAL)
+            
+            def on_focus_out(event):
+                if not entry.get():
+                    entry.insert(0, placeholder_text)
+                    entry.config(fg=Theme.TEXT_NORMAL)
+            
+            # 初始显示占位符
+            if not entry.get():
+                entry.insert(0, placeholder_text)
+            
+            entry.bind('<FocusIn>', on_focus_in)
+            entry.bind('<FocusOut>', on_focus_out)
+        
+        return entry
+
+    @staticmethod
+    def create_button(parent, text, command, bg_color=None, width=None, state=None, style=None, **kwargs):
+        """
+        创建统一的按钮组件
+        
+        Args:
+            parent: 父组件
+            text: 按钮文本
+            command: 按钮命令
+            bg_color: 按钮背景色，直接使用Theme下的颜色，如Theme.BUTTON_PRIMARY_BG
+            width: 按钮宽度
+            state: 按钮状态，可选值: "normal", "disabled", "active"
+            style: 按钮样式预设，可选值: "compact"（紧凑型，用于浏览文件按钮）
+            **kwargs: 其他tk.Button参数
+            
+        Returns:
+            创建的按钮组件
+        """
+        # 设置默认参数
+        button_kwargs = {
+            "font": Theme.BUTTON_FONT,
+            "bg": bg_color if bg_color is not None else Theme.BUTTON_PRIMARY_BG,
+            "fg": Theme.BUTTON_FG,
+            "relief": tk.FLAT,
+            "padx": 10,
+            "pady": 5
+        }
+        
+        # 根据样式预设调整参数
+        if style == "compact":
+            # 紧凑型样式，用于浏览文件按钮和路径选择按钮
+            button_kwargs["padx"] = 2
+            button_kwargs["pady"] = 2
+            button_kwargs["font"] = Theme.INPUT_FONT  # 使用较小的字体
+        
+        # 添加可选参数
+        if width is not None:
+            button_kwargs["width"] = width
+        if state is not None:
+            button_kwargs["state"] = state
+            
+        # 合并用户提供的参数
+        button_kwargs.update(kwargs)
+        
+        # 创建并返回按钮
+        return tk.Button(parent, text=text, command=command, **button_kwargs)
+
+    @staticmethod
+    def create_checkbutton(parent, text, variable):
+        """创建复选框组件"""
+        return tk.Checkbutton(
+            parent, 
+            text=text, 
+            variable=variable,
+            font=Theme.INPUT_FONT, 
+            bg=Theme.FRAME_BG, 
+            fg=Theme.TEXT_NORMAL, 
+            selectcolor=Theme.INPUT_BG,
+            relief=tk.FLAT
+        )
+
+    @staticmethod
     def _debounce_wraplength(event: tk.Event) -> None:
         """
         防抖处理函数，用于更新标签的 wraplength。
@@ -109,7 +209,7 @@ class UIComponents:
         label.dnd_bind('<<Drop>>', drop_cmd)
         label.bind('<Configure>', UIComponents._debounce_wraplength)
 
-        button = tk.Button(frame, text=button_text, command=browse_cmd, font=Theme.INPUT_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
+        button = UIComponents.create_button(frame, button_text, browse_cmd, bg_color=Theme.BUTTON_PRIMARY_BG, style="compact")
         button.pack()
         return frame, label
 
@@ -132,27 +232,27 @@ class UIComponents:
         )
 
     @staticmethod
-    def create_output_path_entry(parent, title, textvariable, save_cmd):
-        frame = tk.LabelFrame(parent, text=title, font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
-        frame.pack(fill=tk.X, pady=(10, 15))
+    def create_directory_path_entry(parent, title, textvariable, select_cmd, open_cmd, placeholder_text=None):
+        frame = tk.LabelFrame(parent, text=title, font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=8)
+        frame.pack(fill=tk.X, pady=5)
 
-        entry = tk.Entry(frame, textvariable=textvariable, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1)
+        entry = UIComponents.create_textbox_entry(frame, textvariable, placeholder_text=placeholder_text)
         entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5), ipady=3)
 
-        button = tk.Button(frame, text="另存为...", command=save_cmd, font=Theme.INPUT_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
-        button.pack(side=tk.RIGHT)
+        select_btn = UIComponents.create_button(frame, "选", select_cmd, bg_color=Theme.BUTTON_PRIMARY_BG, width=3, style="compact")
+        select_btn.pack(side=tk.LEFT, padx=(0, 5))
+        open_btn = UIComponents.create_button(frame, "开", open_cmd, bg_color=Theme.BUTTON_SECONDARY_BG, width=3, style="compact")
+        open_btn.pack(side=tk.LEFT)
         return frame
 
     @staticmethod
-    def create_directory_path_entry(parent, title, textvariable, select_cmd, open_cmd):
+    def create_file_path_entry(parent, title, textvariable, select_cmd):
         frame = tk.LabelFrame(parent, text=title, font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=8)
         frame.pack(fill=tk.X, pady=5)
 
         entry = tk.Entry(frame, textvariable=textvariable, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1)
         entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5), ipady=3)
 
-        select_btn = tk.Button(frame, text="选", command=select_cmd, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=3)
-        select_btn.pack(side=tk.LEFT, padx=(0, 5))
-        open_btn = tk.Button(frame, text="开", command=open_cmd, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SECONDARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=3)
-        open_btn.pack(side=tk.LEFT)
+        select_btn = UIComponents.create_button(frame, "选", select_cmd, bg_color=Theme.BUTTON_PRIMARY_BG, width=3, style="compact")
+        select_btn.pack(side=tk.LEFT)
         return frame

@@ -38,16 +38,24 @@ class CrcToolTab(TabFrame):
         # 使用 pack 的 before 参数，将此组件插入到拖放区标签(self.original_label)的上方
         auto_find_frame.pack(fill=tk.X, pady=(0, 8), before=self.original_label)
         tk.Label(auto_find_frame, text="查找路径:", bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL).pack(side=tk.LEFT, padx=(0,5))
-        tk.Entry(auto_find_frame, textvariable=self.game_resource_dir_var, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1, state='readonly').pack(side=tk.LEFT, fill=tk.X, expand=True)
+        UIComponents.create_textbox_entry(
+            auto_find_frame, 
+            textvariable=self.game_resource_dir_var,
+            placeholder_text="游戏资源目录",
+            readonly=True
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # 3. 操作按钮
         action_button_frame = tk.Frame(self) # 使用与父框架相同的背景色
         action_button_frame.pack(fill=tk.X, pady=10)
         action_button_frame.grid_columnconfigure((0, 1, 2), weight=1)
         
-        tk.Button(action_button_frame, text="运行CRC修正", command=self.run_correction_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=0, sticky="ew", padx=5)
-        tk.Button(action_button_frame, text="计算CRC值", command=self.calculate_values_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=1, sticky="ew", padx=5)
-        tk.Button(action_button_frame, text="替换原始文件", command=self.replace_original_thread, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, padx=10, pady=5).grid(row=0, column=2, sticky="ew", padx=5)
+        UIComponents.create_button(action_button_frame, "运行CRC修正", self.run_correction_thread, 
+                                   bg_color=Theme.BUTTON_SUCCESS_BG, padx=10, pady=5).grid(row=0, column=0, sticky="ew", padx=5)
+        UIComponents.create_button(action_button_frame, "计算CRC值", self.calculate_values_thread, 
+                                   bg_color=Theme.BUTTON_PRIMARY_BG, padx=10, pady=5).grid(row=0, column=1, sticky="ew", padx=5)
+        UIComponents.create_button(action_button_frame, "替换原始文件", self.replace_original_thread, 
+                                   bg_color=Theme.BUTTON_DANGER_BG, padx=10, pady=5).grid(row=0, column=2, sticky="ew", padx=5)
 
     def drop_original(self, event): 
         if is_multiple_drop(event.data):

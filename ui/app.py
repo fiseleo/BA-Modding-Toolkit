@@ -6,10 +6,10 @@ from pathlib import Path
 import os
 
 from utils import get_environment_info
-from .components import Theme, Logger
-from .utils import ConfigManager
-from .dialogs import SettingsDialog
-from .tabs import ModUpdateTab, CrcToolTab, AssetPackerTab
+from ui.components import Theme, Logger, UIComponents
+from ui.utils import ConfigManager
+from ui.dialogs import SettingsDialog
+from ui.tabs import ModUpdateTab, CrcToolTab, AssetPackerTab, AssetExtractorTab
 
 class App(tk.Frame):
     def __init__(self, master):
@@ -93,14 +93,10 @@ class App(tk.Frame):
         top_controls_frame.pack(fill=tk.X, pady=(0, 10))
         
         # 使用grid布局让按钮横向拉伸填满
-        settings_button = tk.Button(top_controls_frame, text="Settings", command=self.open_settings_dialog,
-                                    font=Theme.BUTTON_FONT, bg=Theme.BUTTON_WARNING_BG, fg=Theme.BUTTON_FG,
-                                    relief=tk.FLAT)
+        settings_button = UIComponents.create_button(top_controls_frame, "Settings", self.open_settings_dialog, bg_color=Theme.BUTTON_WARNING_BG)
         settings_button.grid(row=0, column=0, sticky="ew", padx=(0, 5))
         
-        environment_button = tk.Button(top_controls_frame, text="Env", command=self.show_environment_info, 
-                                       font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SECONDARY_BG, fg=Theme.BUTTON_FG, 
-                                       relief=tk.FLAT)
+        environment_button = UIComponents.create_button(top_controls_frame, "Env", self.show_environment_info, bg_color=Theme.BUTTON_SECONDARY_BG)
         environment_button.grid(row=0, column=1, sticky="ew")
         
         # 设置列权重，让按钮均匀拉伸
@@ -267,6 +263,13 @@ class App(tk.Frame):
                                     target_spine_version_var=self.target_spine_version_var)
         self.notebook.add(asset_tab, text="资源打包")
 
-        # TODO: Bundle 解包工具
+        # Tab: 资源提取
+        asset_extractor_tab = AssetExtractorTab(self.notebook, self.logger, 
+                                                output_dir_var=self.output_dir_var,
+                                                replace_texture2d_var=self.replace_texture2d_var,
+                                                replace_textasset_var=self.replace_textasset_var,
+                                                replace_mesh_var=self.replace_mesh_var,
+                                                replace_all_var=self.replace_all_var)
+        self.notebook.add(asset_extractor_tab, text="资源提取")
         
         # TODO: 国际服/日服转换工具

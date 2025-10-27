@@ -504,6 +504,84 @@ def process_asset_packing(
         log(traceback.format_exc())
         return False, f"处理过程中发生严重错误:\n{e}"
 
+def process_asset_extraction(
+    bundle_path: Path,
+    output_dir: Path,
+    asset_types_to_extract: set[str],
+    log: LogFunc = no_log,
+) -> tuple[bool, str]:
+    """
+    从指定的 Bundle 文件中提取选定类型的资源到输出目录。
+    支持 Texture2D (保存为 .png) 和 TextAsset (按原名保存)。
+
+    Args:
+        bundle_path: 目标 Bundle 文件的路径。
+        output_dir: 提取资源的保存目录。
+        asset_types_to_extract: 需要提取的资源类型集合 (如 {"Texture2D", "TextAsset"})。
+        log: 日志记录函数。
+
+    Returns:
+        一个元组 (是否成功, 状态消息)。
+    """
+    try:
+        log("\n" + "="*50)
+        log(f"开始从 '{bundle_path.name}' 提取资源...")
+        log(f"提取类型: {', '.join(asset_types_to_extract)}")
+        log(f"输出目录: {output_dir}")
+
+        env = load_bundle(bundle_path, log)
+        if not env:
+            return False, "无法加载 Bundle 文件。请检查文件是否损坏。"
+
+        # 确保输出目录存在
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        extraction_count = 0
+        extracted_files = []
+
+        for obj in env.objects:
+            if obj.type.name in asset_types_to_extract:
+                data = obj.read()
+                resource_name = getattr(data, 'm_Name', None)
+                if not resource_name:
+                    log(f"  > 跳过一个未命名的 {obj.type.name} 资源")
+                    continue
+
+                try:
+                    if obj.type.name == "Texture2D":
+                        output_path = output_dir / f"{resource_name}.png"
+                        log(f"  - 正在提取 Texture2D: {resource_name}.png")
+                        image = data.image.convert("RGBA")
+                        image.save(output_path)
+                        extracted_files.append(output_path.name)
+                        extraction_count += 1
+
+                    elif obj.type.name == "TextAsset":
+                        output_path = output_dir / resource_name
+                        log(f"  - 正在提取 TextAsset: {resource_name}")
+                        asset_bytes = data.m_Script.encode("utf-8", "surrogateescape")
+                        with open(output_path, "wb") as f:
+                            f.write(asset_bytes)
+                        extracted_files.append(output_path.name)
+                        extraction_count += 1
+
+                except Exception as e:
+                    log(f"  ❌ 提取资源 '{resource_name}' 时发生错误: {e}")
+
+        if extraction_count == 0:
+            msg = "未找到任何指定类型的资源进行提取。"
+            log(f"⚠️ {msg}")
+            return True, msg
+
+        success_msg = f"成功提取 {extraction_count} 个资源。"
+        log(f"\n🎉 {success_msg}")
+        return True, success_msg
+
+    except Exception as e:
+        log(f"\n❌ 严重错误: 提取资源时发生错误: {e}")
+        log(traceback.format_exc())
+        return False, f"处理过程中发生严重错误:\n{e}"
+
 def _extract_assets_from_bundle(
     env: UnityPy.Environment,
     asset_types_to_replace: set[str],

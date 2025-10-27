@@ -28,12 +28,16 @@ class SettingsDialog(tk.Toplevel):
         entry_button_container = tk.Frame(self.game_dir_frame, bg=Theme.FRAME_BG)
         entry_button_container.pack(fill=tk.X)
 
-        entry = tk.Entry(entry_button_container, textvariable=self.app.game_resource_dir_var, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1)
+        entry = UIComponents.create_textbox_entry(
+            entry_button_container, 
+            textvariable=self.app.game_resource_dir_var,
+            placeholder_text="选择游戏资源目录"
+        )
         entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5), ipady=3)
 
-        select_btn = tk.Button(entry_button_container, text="选", command=self.app.select_game_resource_directory, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=3)
+        select_btn = UIComponents.create_button(entry_button_container, "选", self.app.select_game_resource_directory, bg_color=Theme.BUTTON_PRIMARY_BG, width=3, style="compact")
         select_btn.pack(side=tk.LEFT, padx=(0, 5))
-        open_btn = tk.Button(entry_button_container, text="开", command=self.app.open_game_resource_in_explorer, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SECONDARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=3)
+        open_btn = UIComponents.create_button(entry_button_container, "开", self.app.open_game_resource_in_explorer, bg_color=Theme.BUTTON_SECONDARY_BG, width=3, style="compact")
         open_btn.pack(side=tk.LEFT)
 
         self.auto_detect_checkbox = tk.Checkbutton(
@@ -48,7 +52,8 @@ class SettingsDialog(tk.Toplevel):
 
         UIComponents.create_directory_path_entry(
             container, "输出目录", self.app.output_dir_var,
-            self.app.select_output_directory, self.app.open_output_dir_in_explorer
+            self.app.select_output_directory, self.app.open_output_dir_in_explorer,
+            placeholder_text="选择输出目录"
         )
         
         # 选项设置
@@ -103,21 +108,19 @@ class SettingsDialog(tk.Toplevel):
         spine_version_label = tk.Label(spine_options_frame, text="目标版本:", font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL)
         spine_version_label.pack(side=tk.LEFT, padx=(0, 5))
         
-        spine_version_entry = tk.Entry(spine_options_frame, textvariable=self.app.target_spine_version_var, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1, width=10)
+        spine_version_entry = UIComponents.create_textbox_entry(
+            spine_options_frame, 
+            textvariable=self.app.target_spine_version_var,
+            placeholder_text="目标版本",
+            width=10
+        )
         spine_version_entry.pack(side=tk.LEFT)
 
         # Spine 转换器路径设置
-        spine_path_frame = tk.Frame(spine_frame, bg=Theme.FRAME_BG)
-        spine_path_frame.pack(fill=tk.X, pady=(0, 8))
-        
-        spine_path_label = tk.Label(spine_path_frame, text="Spine 转换器路径:", font=Theme.INPUT_FONT, bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL)
-        spine_path_label.pack(side=tk.LEFT, padx=(0, 5))
-        
-        spine_path_entry = tk.Entry(spine_path_frame, textvariable=self.app.spine_converter_path_var, font=Theme.INPUT_FONT, bg=Theme.INPUT_BG, fg=Theme.TEXT_NORMAL, relief=tk.SUNKEN, bd=1)
-        spine_path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5), ipady=3)
-        
-        spine_path_browse_btn = tk.Button(spine_path_frame, text="浏览", command=self.select_spine_converter_path, font=Theme.BUTTON_FONT, bg=Theme.BUTTON_PRIMARY_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT, width=5)
-        spine_path_browse_btn.pack(side=tk.LEFT, padx=(0, 5))
+        UIComponents.create_file_path_entry(
+            spine_frame, "Spine 转换器路径", self.app.spine_converter_path_var,
+            self.select_spine_converter_path
+        )
 
         # 初始化所有动态UI的状态
         self.toggle_padding_checkbox_state()
@@ -132,16 +135,13 @@ class SettingsDialog(tk.Toplevel):
         config_buttons_frame.columnconfigure(1, weight=1)
         config_buttons_frame.columnconfigure(2, weight=1)
         
-        save_button = tk.Button(config_buttons_frame, text="Save", command=self.app.save_current_config,
-                               font=Theme.BUTTON_FONT, bg=Theme.BUTTON_SUCCESS_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
+        save_button = UIComponents.create_button(config_buttons_frame, "Save", self.app.save_current_config, bg_color=Theme.BUTTON_SUCCESS_BG)
         save_button.grid(row=0, column=0, sticky="ew", padx=(0, 5))
         
-        load_button = tk.Button(config_buttons_frame, text="Load", command=self.load_config,
-                               font=Theme.BUTTON_FONT, bg=Theme.BUTTON_WARNING_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
+        load_button = UIComponents.create_button(config_buttons_frame, "Load", self.load_config, bg_color=Theme.BUTTON_WARNING_BG)
         load_button.grid(row=0, column=1, sticky="ew", padx=5)
         
-        reset_button = tk.Button(config_buttons_frame, text="Default", command=self.reset_to_default,
-                               font=Theme.BUTTON_FONT, bg=Theme.BUTTON_DANGER_BG, fg=Theme.BUTTON_FG, relief=tk.FLAT)
+        reset_button = UIComponents.create_button(config_buttons_frame, "Default", self.reset_to_default, bg_color=Theme.BUTTON_DANGER_BG)
         reset_button.grid(row=0, column=2, sticky="ew", padx=(5, 0))
 
     def _on_auto_detect_toggle(self):
