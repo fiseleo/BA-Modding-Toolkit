@@ -9,7 +9,7 @@ from utils import get_environment_info
 from ui.components import Theme, Logger, UIComponents
 from ui.utils import ConfigManager
 from ui.dialogs import SettingsDialog
-from ui.tabs import ModUpdateTab, CrcToolTab, AssetPackerTab, AssetExtractorTab
+from ui.tabs import ModUpdateTab, CrcToolTab, AssetPackerTab, AssetExtractorTab, JpGbConversionTab
 
 class App(tk.Frame):
     def __init__(self, master):
@@ -272,4 +272,11 @@ class App(tk.Frame):
                                                 replace_all_var=self.replace_all_var)
         self.notebook.add(asset_extractor_tab, text="资源提取")
         
-        # TODO: 国际服/日服转换工具
+        # Tab: 日服/国际服转换
+        jp_gb_conversion_tab = JpGbConversionTab(self.notebook, self.logger, 
+                                                output_dir_var=self.output_dir_var,
+                                                enable_padding_var=self.enable_padding_var,
+                                                enable_crc_correction_var=self.enable_crc_correction_var,
+                                                create_backup_var=self.create_backup_var,
+                                                compression_method_var=self.compression_method_var)
+        self.notebook.add(jp_gb_conversion_tab, text="JP/GB转换")

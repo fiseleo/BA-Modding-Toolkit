@@ -201,7 +201,7 @@ class UIComponents:
     def create_drop_zone(parent, title, drop_cmd, browse_cmd, label_text, button_text):
         """创建通用的拖放区域组件"""
         frame = tk.LabelFrame(parent, text=title, font=Theme.FRAME_FONT, fg=Theme.TEXT_TITLE, bg=Theme.FRAME_BG, padx=15, pady=12)
-        frame.pack(fill=tk.X, pady=(0, 10))
+        frame.pack(fill=tk.X, pady=(0, 5))
 
         label = tk.Label(frame, text=label_text, relief=tk.GROOVE, height=4, bg=Theme.MUTED_BG, fg=Theme.TEXT_NORMAL, font=Theme.INPUT_FONT, justify=tk.LEFT)
         label.pack(fill=tk.X, pady=(0, 8))

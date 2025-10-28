@@ -960,3 +960,253 @@ def process_batch_mod_update(
             failed_tasks.append(f"{filename} - {process_message}")
 
     return success_count, fail_count, failed_tasks
+
+def process_jp_to_global_conversion(
+    global_bundle_path: Path,
+    jp_textasset_bundle_path: Path,
+    jp_texture2d_bundle_path: Path,
+    output_dir: Path,
+    save_options: SaveOptions,
+    log: LogFunc = no_log,
+) -> tuple[bool, str]:
+    """
+    处理日服转国际服的转换。
+    
+    将日服的两个资源bundle（textasset、texture2d）合并到国际服的基础bundle文件中。
+    
+    Args:
+        global_bundle_path: 国际服bundle文件路径（作为基础）
+        jp_textasset_bundle_path: 日服textasset bundle文件路径
+        jp_texture2d_bundle_path: 日服texture2d bundle文件路径
+        output_dir: 输出目录
+        save_options: 保存和CRC修正的选项
+        log: 日志记录函数
+    
+    Returns:
+        tuple[bool, str]: (是否成功, 状态消息) 的元组
+    """
+    try:
+        log("="*50)
+        log("开始JP -> Global转换...")
+        log(f"  > 国际服基础文件: {global_bundle_path.name}")
+        log(f"  > 日服TextAsset文件: {jp_textasset_bundle_path.name}")
+        log(f"  > 日服Texture2D文件: {jp_texture2d_bundle_path.name}")
+        
+        # 加载所有 bundles
+        global_env = load_bundle(global_bundle_path, log)
+        if not global_env:
+            return False, "无法加载国际服基础文件"
+        
+        jp_textasset_env = load_bundle(jp_textasset_bundle_path, log)
+        if not jp_textasset_env:
+            return False, "无法加载日服TextAsset文件"
+        
+        jp_texture2d_env = load_bundle(jp_texture2d_bundle_path, log)
+        if not jp_texture2d_env:
+            return False, "无法加载日服Texture2D文件"
+        
+        log("\n--- 合并资源 ---")
+
+        # 1. 从日服 bundles 构建源资源映射，以便快速查找
+        #    键是资源名，值是 UnityPy 的 Object 对象
+        source_assets = {}
+        for obj in jp_textasset_env.objects:
+            if obj.type.name == "TextAsset":
+                source_assets[obj.read().m_Name] = obj
+        for obj in jp_texture2d_env.objects:
+            if obj.type.name == "Texture2D":
+                source_assets[obj.read().m_Name] = obj
+        
+        # 2. 准备替换和添加
+        #    `replaced_or_added` 用于跟踪已处理的源资源
+        replaced_or_added = set()
+        textasset_count = 0
+        texture2d_count = 0
+
+        # --- 阶段一: 替换现有资源 ---
+        # 遍历目标环境，用源资源的数据更新匹配的现有资源
+        for obj in global_env.objects:
+            if obj.type.name not in ["TextAsset", "Texture2D"]:
+                continue
+            
+            data = obj.read()
+            resource_name = data.m_Name
+            
+            if resource_name in source_assets:
+                source_obj = source_assets[resource_name]
+                
+                # 确保类型匹配
+                if obj.type.name != source_obj.type.name:
+                    log(f"  > ⚠️ 类型不匹配，跳过替换: {resource_name} (目标: {obj.type.name}, 源: {source_obj.type.name})")
+                    continue
+
+                log(f"  > 替换 {obj.type.name}: {resource_name}")
+                source_data = source_obj.read()
+                
+                if obj.type.name == "TextAsset":
+                    data.m_Script = source_data.m_Script
+                    textasset_count += 1
+                elif obj.type.name == "Texture2D":
+                    data.image = source_data.image
+                    texture2d_count += 1
+                
+                data.save() # 将修改保存回对象
+                replaced_or_added.add(resource_name)
+
+        # --- 阶段二: 添加新资源 ---
+        # 遍历源资源映射，将未被用于替换的资源添加到目标环境
+        for resource_name, source_obj in source_assets.items():
+            if resource_name not in replaced_or_added:
+                log(f"  > 添加 {source_obj.type.name}: {resource_name}")
+                
+                # 关键步骤: 将源对象的 assets_file 指向目标环境的 file 对象
+                # 这使得该对象成为目标环境的一部分
+                source_obj.assets_file = global_env.file
+                global_env.objects.append(source_obj)
+                
+                if source_obj.type.name == "TextAsset":
+                    textasset_count += 1
+                elif source_obj.type.name == "Texture2D":
+                    texture2d_count += 1
+
+        log(f"\n  > 合并完成，共处理了 {textasset_count} 个 TextAsset 和 {texture2d_count} 个 Texture2D")
+        
+        # 3. 保存最终文件
+        output_path = output_dir / global_bundle_path.name
+        save_ok, save_message = _save_and_crc(
+            env=global_env,
+            output_path=output_path,
+            original_bundle_path=global_bundle_path,
+            save_options=save_options,
+            log=log
+        )
+        
+        if not save_ok:
+            return False, save_message
+        
+        log(f"最终文件已保存至: {output_path}")
+        log(f"\n🎉 JP -> Global转换完成！")
+        return True, "JP -> Global转换成功！"
+        
+    except Exception as e:
+        log(f"\n❌ 严重错误: 在JP -> Global转换过程中发生错误: {e}")
+        log(traceback.format_exc())
+        return False, f"转换过程中发生严重错误:\n{e}"
+
+def process_global_to_jp_conversion(
+    global_bundle_path: Path,
+    jp_textasset_bundle_path: Path,
+    jp_texture2d_bundle_path: Path,
+    output_dir: Path,
+    save_options: SaveOptions,
+    log: LogFunc = no_log,
+) -> tuple[bool, str]:
+    """
+    处理国际服转日服的转换。
+    
+    将一个国际服格式的bundle文件，使用日服bundle作为模板，
+    拆分为日服格式的两个bundle文件（textasset 和 texture2d）。
+    
+    Args:
+        global_bundle_path: 待转换的国际服bundle文件路径。
+        jp_textasset_bundle_path: 日服textasset bundle文件路径（用作模板）。
+        jp_texture2d_bundle_path: 日服texture2d bundle文件路径（用作模板）。
+        output_dir: 输出目录。
+        save_options: 保存选项（函数内部会自动禁用CRC修正）。
+        log: 日志记录函数。
+    
+    Returns:
+        tuple[bool, str]: (是否成功, 状态消息) 的元组
+    """
+    try:
+        log("="*50)
+        log("开始Global -> JP转换...")
+        log(f"  > 国际服源文件: {global_bundle_path.name}")
+        log(f"  > TextAsset 模板: {jp_textasset_bundle_path.name}")
+        log(f"  > Texture2D 模板: {jp_texture2d_bundle_path.name}")
+        
+        # 1. 加载所有相关文件
+        global_env = load_bundle(global_bundle_path, log)
+        if not global_env:
+            return False, "无法加载国际服源文件"
+
+        textasset_env = load_bundle(jp_textasset_bundle_path, log)
+        if not textasset_env:
+            return False, "无法加载日服 TextAsset 模板文件"
+        
+        texture2d_env = load_bundle(jp_texture2d_bundle_path, log)
+        if not texture2d_env:
+            return False, "无法加载日服 Texture2D 模板文件"
+        
+        # 2. 准备目标环境：清空模板中的对象，保留文件结构
+        textasset_env.objects = []
+        texture2d_env.objects = []
+        
+        # 3. 分类并迁移资源
+        log("\n--- 正在迁移资源 ---")
+        textasset_count = 0
+        texture2d_count = 0
+        
+        for obj in global_env.objects:
+            if obj.type.name == "TextAsset":
+                # 将对象的所有权转移到新的环境中
+                obj.assets_file = textasset_env.file
+                textasset_env.objects.append(obj)
+                textasset_count += 1
+            elif obj.type.name == "Texture2D":
+                obj.assets_file = texture2d_env.file
+                texture2d_env.objects.append(obj)
+                texture2d_count += 1
+        
+        log(f"  > 迁移完成: {textasset_count} 个 TextAsset, {texture2d_count} 个 Texture2D")
+        
+        if textasset_count == 0 and texture2d_count == 0:
+            msg = "源文件中未找到任何 TextAsset 或 Texture2D 资源，无法进行转换。"
+            log(f"  > ⚠️ {msg}")
+            return False, msg
+
+        # 4. 定义输出路径和保存选项
+        output_textasset_path = output_dir / jp_textasset_bundle_path.name
+        output_texture2d_path = output_dir / jp_texture2d_bundle_path.name
+        
+        # 5. 保存拆分后的 bundle 文件
+        if textasset_count > 0:
+            log("\n--- 保存 TextAsset Bundle ---")
+            save_ok, save_message = _save_and_crc(
+                env=textasset_env,
+                output_path=output_textasset_path,
+                original_bundle_path=jp_textasset_bundle_path, # 用模板作为原始路径
+                save_options=save_options,
+                log=log
+            )
+            if not save_ok:
+                return False, f"保存 TextAsset bundle 失败: {save_message}"
+        else:
+            log("\n--- 跳过保存空的 TextAsset Bundle ---")
+
+
+        if texture2d_count > 0:
+            log("\n--- 保存 Texture2D Bundle ---")
+            save_ok, save_message = _save_and_crc(
+                env=texture2d_env,
+                output_path=output_texture2d_path,
+                original_bundle_path=jp_texture2d_bundle_path, # 用模板作为原始路径
+                save_options=save_options,
+                log=log
+            )
+            if not save_ok:
+                return False, f"保存 Texture2D bundle 失败: {save_message}"
+        else:
+            log("\n--- 跳过保存空的 Texture2D Bundle ---")
+
+        log(f"\n--- 转换完成 ---")
+        log(f"TextAsset Bundle 已保存至: {output_textasset_path}")
+        log(f"Texture2D Bundle 已保存至: {output_texture2d_path}")
+        log(f"\n🎉 Global -> JP转换完成！")
+        
+        return True, "Global -> JP转换成功！"
+        
+    except Exception as e:
+        log(f"\n❌ 严重错误: 在Global -> JP转换过程中发生错误: {e}")
+        log(traceback.format_exc())
+        return False, f"转换过程中发生严重错误:\n{e}"
