@@ -40,7 +40,9 @@ The program contains multiple functional tabs:
     - **单个更新** (Single Update): Update a single Mod file
     - **批量更新** (Batch Update): Batch process multiple Mod files
 - **CRC 修正工具** (CRC Fix Tool): CRC checksum correction functionality
-- **资源文件夹替换** (Asset Folder Replacement): Replace asset files in Bundle with files from folder
+- **资源打包** (Asset Packer): Pack asset files from a folder into a Bundle file, replacing the corresponding assets in the Bundle
+- **资源提取** (Asset Extractor): Extract specified types of assets from Bundle files
+- **JP/GB转换** (JP/GB Conversion): Convert between JP server format and Global server format
 
 Click the **Settings** button at the top of the main interface to open the advanced settings window.
 The program can save user configurations to the `config.ini` file, which will be automatically restored upon next startup.
@@ -118,6 +120,27 @@ The "计算CRC值" (Calculate CRC Value) button can be used to manually view the
 
 This feature is for creating new Mods, such as quickly packaging modified assets into Bundle files.
 
+### 资源提取 (Asset Extractor)
+1. Drag and drop or browse to select the Bundle file to extract assets from
+2. Select an output directory, the program will automatically create a subdirectory named after the Bundle file
+3. Check the asset types to extract in the settings window
+4. Click the "开始提取" (Start Extraction) button, the program will automatically extract the specified types of assets
+
+This feature is for extracting assets from existing Bundle files for modification or analysis.
+
+### JP/GB转换 (JP/GB Conversion)
+Conversion between JP server format (two files) and Global server format (one file).
+
+#### JP -> Global Conversion
+1. Select the Global server Bundle file (as the base file)
+2. Select the JP TextAsset Bundle and Texture2D Bundle files
+3. Click the "开始转换" (Start Conversion) button, the program will extract assets from the two JP server Bundles and merge them into the Global server version file
+
+#### Global -> JP Conversion
+1. Select the Global server Bundle file (source file)
+2. Select the JP TextAsset Bundle and Texture2D Bundle files (as template)
+4. Click the "开始转换" (Start Conversion) button, the program will split the Global server format Bundle into the two JP server Bundle files
+
 ## Developing
 
 The author's programming skills are limited, welcome to provide suggestions or issues, and also welcome to contribute code to improve this project.
@@ -138,9 +161,11 @@ BA-Modding-Toolkit/
 │ ├── dialogs.py    # Settings dialogs
 │ ├── utils.py      # UI related utility functions
 │ └── tabs/         # Feature tabs
-│   ├── mod_update_tab.py     # Mod Update tab
-│   ├── crc_tool_tab.py       # CRC Fix Tool tab
-│   └── asset_packer_tab.py   # Asset Packer tab
+│   ├── mod_update_tab.py       # Mod Update tab
+│   ├── crc_tool_tab.py         # CRC Fix Tool tab
+│   ├── asset_packer_tab.py     # Asset Packer tab
+│   ├── asset_extractor_tab.py  # Asset Extractor tab
+│   └── jp_gb_conversion_tab.py # JP/GB Conversion tab
 ├── maincli.py       # Command-line interface entry point
 ├── processing.py    # Core processing logic
 ├── utils.py         # Utility classes and helper functions

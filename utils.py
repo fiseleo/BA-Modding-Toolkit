@@ -198,19 +198,19 @@ def get_environment_info():
 
     try:
         import UnityPy
-        unitypy_version = UnityPy.__version__
+        unitypy_version = UnityPy.__version__ or "Installed"
     except ImportError:
         unitypy_version = "Not installed"
 
     try:
         from PIL import Image
-        pillow_version = Image.__version__
+        pillow_version = Image.__version__ or "Installed"
     except ImportError:
         pillow_version = "Not installed"
 
     try:
         import tkinter
-        tk_version = tkinter.Tcl().eval('info patchlevel')
+        tk_version = tkinter.Tcl().eval('info patchlevel') or "Installed"
     except ImportError:
         tk_version = "Not installed"
     except tkinter.TclError:
@@ -218,7 +218,7 @@ def get_environment_info():
 
     try:
         import tkinterdnd2
-        tkinterdnd2_version = tkinterdnd2.TkinterDnD.TkdndVersion or "Unknown"
+        tkinterdnd2_version = tkinterdnd2.TkinterDnD.TkdndVersion or "Installed"
     except ImportError:
         tkinterdnd2_version = "Not installed"
     except AttributeError:

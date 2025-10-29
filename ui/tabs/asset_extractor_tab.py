@@ -22,7 +22,7 @@ class AssetExtractorTab(TabFrame):
         self.replace_all_var: tk.BooleanVar = replace_all_var
         
         # 子目录变量
-        self.output_dir_var: tk.StringVar = tk.StringVar()
+        self.subdir_var: tk.StringVar = tk.StringVar()
         
         # 1. 目标 Bundle 文件
         _, self.bundle_label = UIComponents.create_file_drop_zone(
@@ -31,7 +31,7 @@ class AssetExtractorTab(TabFrame):
         
         # 2. 输出目录
         self.output_frame = UIComponents.create_directory_path_entry(
-            self, "输出目录", self.output_dir_var,
+            self, "输出目录", self.subdir_var,
             self.select_output_dir, self.open_output_dir,
             placeholder_text="选择输出子目录"
         )
@@ -82,15 +82,15 @@ class AssetExtractorTab(TabFrame):
             try:
                 # 尝试获取相对路径
                 rel_path = selected_path.relative_to(output_dir)
-                self.output_dir_var.set(str(rel_path))
+                self.subdir_var.set(str(rel_path))
             except ValueError:
                 # 如果不是子目录，则使用绝对路径
-                self.output_dir_var.set(selected_dir)
+                self.subdir_var.set(selected_dir)
     
     def open_output_dir(self):
         """打开输出子目录"""
         # 获取子目录名
-        subdir_name = self.output_dir_var.get().strip()
+        subdir_name = self.subdir_var.get().strip()
         if not subdir_name and self.bundle_path:
             subdir_name = self.bundle_path.stem
         
@@ -106,28 +106,19 @@ class AssetExtractorTab(TabFrame):
         if output_path.exists():
             os.startfile(output_path)
         else:
-            messagebox.showwarning("警告", "输出目录不存在。")
-
-    def open_output_folder(self):
-        """打开输出文件夹"""
-        # 获取子目录名
-        subdir_name = self.output_dir_var.get().strip()
-        if not subdir_name and self.bundle_path:
-            subdir_name = self.bundle_path.stem
-        
-        if subdir_name:
-            # 如果是相对路径，则与输出目录组合
-            if not Path(subdir_name).is_absolute():
-                output_path = Path(self.output_dir_var.get()) / subdir_name
+            # 如果目录不存在，询问用户是否要创建
+            result = messagebox.askyesno(
+                "目录不存在", 
+                f"输出目录 '{output_path}' 不存在。\n是否要创建此目录？"
+            )
+            if result:
+                try:
+                    output_path.mkdir(parents=True, exist_ok=True)
+                    os.startfile(output_path)
+                except Exception as e:
+                    messagebox.showerror("错误", f"创建目录失败: {e}")
             else:
-                output_path = Path(subdir_name)
-        else:
-            output_path = Path(self.output_dir_var.get())
-            
-        if output_path.exists():
-            os.startfile(output_path)
-        else:
-            messagebox.showwarning("警告", "输出目录不存在。")
+                messagebox.showinfo("提示", "未创建目录。")
 
     def run_extraction_thread(self):
         if not self.bundle_path:
@@ -135,12 +126,9 @@ class AssetExtractorTab(TabFrame):
             return
             
         output_path = Path(self.output_dir_var.get())
-        if not output_path.exists():
-            messagebox.showerror("错误", "输出目录不存在，请在设置中配置有效的输出目录。")
-            return
-            
+        
         # 获取子目录名
-        subdir_name = self.output_dir_var.get().strip()
+        subdir_name = self.subdir_var.get().strip()
         if not subdir_name:
             subdir_name = self.bundle_path.stem
         

@@ -38,7 +38,9 @@ python maincli.py env
     - 单个更新：用于更新单个 Mod 文件
     - 批量更新：用于批量处理多个 Mod 文件
 - **CRC 修正工具**：CRC 校验值修正功能
-- **资源文件夹替换**：从文件夹替换 Bundle 中的同名资源
+- **资源打包**：将一个文件夹内的资源打包进对应的 Bundle ，替换 Bundle 中的同名资源
+- **资源提取**：从 Bundle 文件中提取指定类型的资源
+- **JP/GB转换**：日服与国际服格式互相转换
 
 点击主界面上方的 **Settings** 按钮打开高级设置窗口。
 程序可以将用户配置保存到 `config.ini` 文件，下次启动时会自动恢复之前的设置。
@@ -86,7 +88,7 @@ python maincli.py env
 1. 拖放或浏览选择需要更新的旧版 Mod Bundle 文件
 2. 程序会自动根据资源目录寻找对应目标 Bundle 文件
 3. 在设置窗口中勾选需要替换的资源类型
-4. 点击"开始一键更新"按钮，程序会自动处理并生成更新后的 Bundle 文件
+4. 点击"开始更新"按钮，程序会自动处理并生成更新后的 Bundle 文件
 5. （可选）成功后点击"覆盖原文件"应用修改。请确保开启了"创建备份"选项以防止风险。
 
 此功能同样适用于在不同平台间移植 Mod，只需在第二步中选择来自对应平台的 Bundle 文件即可。
@@ -115,6 +117,27 @@ python maincli.py env
 
 此功能适用于制作新的 Mod，例如快速将修改后的资源打包到 Bundle 文件中。
 
+### 资源提取
+1. 拖放或浏览选择需要提取资源的 Bundle 文件
+2. 选择输出目录，程序会自动创建以 Bundle 文件名命名的子目录
+3. 在设置窗口中勾选需要提取的资源类型
+4. 点击"开始提取"按钮，程序会自动提取指定类型的资源
+
+此功能适用于从现有 Bundle 文件中提取资源进行修改或分析。
+
+### JP/GB转换
+日服（两个文件）与国际服（一个文件）格式之间的互相转换。
+
+#### JP -> Global 转换
+1. 选择国际服 Bundle 文件（作为基础文件）
+2. 选择日服 TextAsset Bundle 与 Texture2D Bundle 文件
+3. 点击"开始转换"按钮，程序会从日服的两个 Bundle 提取资源并合并到国际服版本的文件中
+
+#### Global -> JP 转换
+1. 选择国际服 Bundle 文件（源文件）
+2. 选择日服 TextAsset Bundle 文件与 Texture2D Bundle 文件（作为模板）
+3. 点击"开始转换"按钮，程序会将国际服格式的 Bundle 拆分到日服的两个 Bundle 文件中
+
 ## 开发
 
 作者的编程水平有限，欢迎提出建议或是issue，也欢迎贡献代码以改进本项目。
@@ -135,9 +158,11 @@ BA-Modding-Toolkit/
 │ ├── dialogs.py    # 设置对话框
 │ ├── utils.py      # UI相关工具函数
 │ └── tabs/         # 功能标签页
-│   ├── mod_update_tab.py     # Mod 更新标签页
-│   ├── crc_tool_tab.py       # CRC 修正工具标签页
-│   └── asset_packer_tab.py   # 资源文件夹打包标签页
+│   ├── mod_update_tab.py       # Mod 更新标签页
+│   ├── crc_tool_tab.py         # CRC 修正工具标签页
+│   ├── asset_packer_tab.py     # 资源文件夹打包标签页
+│   ├── asset_extractor_tab.py  # 资源提取标签页
+│   └── jp_gb_conversion_tab.py # 日服/国际服转换标签页
 ├── maincli.py       # 命令行接口主入口
 ├── processing.py    # 核心处理逻辑
 ├── utils.py         # 工具类和辅助函数
