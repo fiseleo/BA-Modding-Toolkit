@@ -71,6 +71,7 @@ python maincli.py env
 - 请自行下载第三方 Spine 转换器程序，BAMT 仅提供调用程序转换功能，不包含该程序本体。
 - 下载地址：[SpineSkeletonDataConverter](https://github.com/wang606/SpineSkeletonDataConverter/releases)
 - 在设置界面配置`SpineSkeletonDataConverter.exe`程序的路径，并勾选"启用 Spine 转换"选项。
+- 配置 `SpineAtlasDowngrade.exe` 程序的路径，可以在资源提取时将 Atlas 文件转换为 Spine 3.8 格式。
 
 **注意**：这是一个实验性功能，并非所有 mod 都能成功升级，仅适合高级用户尝试。
 
@@ -121,9 +122,10 @@ python maincli.py env
 1. 拖放或浏览选择需要提取资源的 Bundle 文件
 2. 选择输出目录，程序会自动创建以 Bundle 文件名命名的子目录
 3. 在设置窗口中勾选需要提取的资源类型
-4. 点击"开始提取"按钮，程序会自动提取指定类型的资源
+4. （可选）在设置窗口配置 `SpineAtlasDowngrade.exe` 程序的路径，并开启"启用 Spine 降级"选项，调用第三方程序将提取出的 Spine 文件转换为 Spine 3.8 格式
+5. 点击"开始提取"按钮，程序会自动提取指定类型的资源
 
-此功能适用于从现有 Bundle 文件中提取资源进行修改或分析。
+此功能适用于从现有 Bundle 文件中提取资源进行修改或预览。
 
 ### JP/GB转换
 日服（两个文件）与国际服（一个文件）格式之间的互相转换。

@@ -100,9 +100,16 @@ class ConfigManager:
             
             # 添加Spine转换器选项
             self.config['SpineConverter'] = {
-                'spine_converter_path': app_instance.spine_converter_path_var.get(),
                 'enable_spine_conversion': str(app_instance.enable_spine_conversion_var.get()),
+                'spine_converter_path': app_instance.spine_converter_path_var.get(),
                 'target_spine_version': app_instance.target_spine_version_var.get()
+            }
+            
+            # 添加Spine降级选项
+            self.config['SpineDowngrade'] = {
+                'enable_atlas_downgrade': str(app_instance.enable_atlas_downgrade_var.get()),
+                'atlas_downgrade_path': app_instance.atlas_downgrade_path_var.get(),
+                'spine_downgrade_version': app_instance.spine_downgrade_version_var.get()
             }
             
             # 写入文件
@@ -161,6 +168,15 @@ class ConfigManager:
                     app_instance.enable_spine_conversion_var.set(self.config['SpineConverter']['enable_spine_conversion'].lower() == 'true')
                 if 'target_spine_version' in self.config['SpineConverter']:
                     app_instance.target_spine_version_var.set(self.config['SpineConverter']['target_spine_version'])
+            
+            # 加载Spine降级选项
+            if 'SpineDowngrade' in self.config:
+                if 'atlas_downgrade_path' in self.config['SpineDowngrade']:
+                    app_instance.atlas_downgrade_path_var.set(self.config['SpineDowngrade']['atlas_downgrade_path'])
+                if 'enable_atlas_downgrade' in self.config['SpineDowngrade']:
+                    app_instance.enable_atlas_downgrade_var.set(self.config['SpineDowngrade']['enable_atlas_downgrade'].lower() == 'true')
+                if 'spine_downgrade_version' in self.config['SpineDowngrade']:
+                    app_instance.spine_downgrade_version_var.set(self.config['SpineDowngrade']['spine_downgrade_version'])
             
             return True
         except Exception as e:

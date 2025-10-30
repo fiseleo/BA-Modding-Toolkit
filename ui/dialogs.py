@@ -12,7 +12,7 @@ class SettingsDialog(tk.Toplevel):
         self.app = app_instance # 保存主应用的引用
 
         self.title("高级设置")
-        self.geometry("480x600")
+        self.geometry("500x700")
         self.configure(bg=Theme.WINDOW_BG)
         self.transient(master) # 绑定到主窗口
 
@@ -118,8 +118,14 @@ class SettingsDialog(tk.Toplevel):
 
         # Spine 转换器路径设置
         UIComponents.create_file_path_entry(
-            spine_frame, "Spine 转换器路径", self.app.spine_converter_path_var,
+            spine_frame, "SpineSkeletonDataConverter.exe 路径", self.app.spine_converter_path_var,
             self.select_spine_converter_path
+        )
+        
+        # Spine 降级工具路径设置
+        UIComponents.create_file_path_entry(
+            spine_frame, "SpineAtlasDowngrade.exe 路径", self.app.atlas_downgrade_path_var,
+            self.app.select_atlas_downgrade_path
         )
 
         # 初始化所有动态UI的状态

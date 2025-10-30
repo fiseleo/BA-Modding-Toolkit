@@ -87,19 +87,10 @@ class ModUpdateTab(TabFrame):
         
         # 2. 新版游戏资源文件
         new_mod_frame, self.new_mod_label = UIComponents.create_file_drop_zone(
-            parent, "目标 Bundle 文件", self.drop_new_mod, self.browse_new_mod
+            parent, "目标 Bundle 文件", self.drop_new_mod, self.browse_new_mod,
+            search_path_var=self.game_resource_dir_var
         )
         self.new_mod_label.config(text="拖入旧版Mod后将自动查找目标资源\n或手动拖放/浏览文件")
-
-        auto_find_frame = tk.Frame(new_mod_frame, bg=Theme.FRAME_BG)
-        auto_find_frame.pack(fill=tk.X, pady=(0, 8), before=self.new_mod_label)
-        tk.Label(auto_find_frame, text="查找路径:", bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL).pack(side=tk.LEFT, padx=(0,5))
-        UIComponents.create_textbox_entry(
-            auto_find_frame, 
-            textvariable=self.game_resource_dir_var,
-            placeholder_text="游戏资源目录",
-            readonly=True
-        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # 操作按钮区域
         action_button_frame = tk.Frame(parent)

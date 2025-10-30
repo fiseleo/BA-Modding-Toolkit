@@ -51,6 +51,11 @@ class App(tk.Frame):
         self.spine_converter_path_var.set("")
         self.enable_spine_conversion_var.set(False)
         self.target_spine_version_var.set("4.2.33")
+        
+        # Spine 降级选项
+        self.enable_atlas_downgrade_var.set(False)
+        self.atlas_downgrade_path_var.set("")
+        self.spine_downgrade_version_var.set("3.8.75")  # 设置默认值
 
     def init_shared_variables(self):
         """初始化所有Tabs共享的变量。"""
@@ -71,6 +76,11 @@ class App(tk.Frame):
         self.spine_converter_path_var = tk.StringVar()
         self.enable_spine_conversion_var = tk.BooleanVar()
         self.target_spine_version_var = tk.StringVar()  # 添加目标Spine版本变量
+        
+        # Spine 降级选项
+        self.enable_atlas_downgrade_var = tk.BooleanVar()
+        self.atlas_downgrade_path_var = tk.StringVar()
+        self.spine_downgrade_version_var = tk.StringVar()  # 添加Spine降级版本变量
         
         # 设置默认值
         self._set_default_values()
@@ -172,6 +182,24 @@ class App(tk.Frame):
     def open_output_dir_in_explorer(self):
         self._open_directory_in_explorer(self.output_dir_var.get(), create_if_not_exist=True)
     
+    def select_atlas_downgrade_path(self):
+        """选择SpineAtlasDowngrade.exe路径"""
+        try:
+            current_path = Path(self.atlas_downgrade_path_var.get())
+            if not current_path.exists():
+                current_path = Path.home()
+            
+            selected_file = filedialog.askopenfilename(
+                title="选择 SpineAtlasDowngrade.exe",
+                initialdir=str(current_path.parent) if current_path.parent.exists() else str(current_path),
+                filetypes=[("可执行文件", "*.exe"), ("所有文件", "*.*")]
+            )
+            
+            if selected_file:
+                self.atlas_downgrade_path_var.set(str(Path(selected_file)))
+        except Exception as e:
+            messagebox.showerror("错误", f"选择SpineAtlasDowngrade.exe时发生错误:\n{e}")
+    
     def load_config_on_startup(self):
         """应用启动时自动加载配置"""
         if self.config_manager.load_config(self):
@@ -269,7 +297,11 @@ class App(tk.Frame):
                                                 replace_texture2d_var=self.replace_texture2d_var,
                                                 replace_textasset_var=self.replace_textasset_var,
                                                 replace_mesh_var=self.replace_mesh_var,
-                                                replace_all_var=self.replace_all_var)
+                                                replace_all_var=self.replace_all_var,
+                                                enable_atlas_downgrade_var=self.enable_atlas_downgrade_var,
+                                                atlas_downgrade_path_var=self.atlas_downgrade_path_var,
+                                                spine_converter_path_var=self.spine_converter_path_var,
+                                                spine_downgrade_version_var=self.spine_downgrade_version_var)
         self.notebook.add(asset_extractor_tab, text="资源提取")
         
         # Tab: 日服/国际服转换

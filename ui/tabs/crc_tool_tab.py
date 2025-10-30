@@ -25,25 +25,14 @@ class CrcToolTab(TabFrame):
             self, "待修正文件", self.drop_modified, self.browse_modified
         )
 
-        # 2. 原始文件
+        # 2. 原始文件 - 使用新的 search_path_var 参数来显示查找路径
         original_frame, self.original_label = UIComponents.create_file_drop_zone(
-            self, "原始文件", self.drop_original, self.browse_original
+            self, "原始文件", self.drop_original, self.browse_original, 
+            search_path_var=self.game_resource_dir_var
         )
         
         # 自定义拖放区的提示文本，使其更具指导性
         self.original_label.config(text="拖入修改后文件后将自动查找原始文件\n或手动拖放/浏览文件")
-        
-        # 创建并插入用于显示游戏资源目录的额外组件
-        auto_find_frame = tk.Frame(original_frame, bg=Theme.FRAME_BG)
-        # 使用 pack 的 before 参数，将此组件插入到拖放区标签(self.original_label)的上方
-        auto_find_frame.pack(fill=tk.X, pady=(0, 8), before=self.original_label)
-        tk.Label(auto_find_frame, text="查找路径:", bg=Theme.FRAME_BG, fg=Theme.TEXT_NORMAL).pack(side=tk.LEFT, padx=(0,5))
-        UIComponents.create_textbox_entry(
-            auto_find_frame, 
-            textvariable=self.game_resource_dir_var,
-            placeholder_text="游戏资源目录",
-            readonly=True
-        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # 3. 操作按钮
         action_button_frame = tk.Frame(self) # 使用与父框架相同的背景色

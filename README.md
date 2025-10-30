@@ -73,6 +73,7 @@ Uses a third-party program to convert older Spine 3.8 format to the currently su
 - You need to download the third-party Spine converter program yourself. BAMT only calls the program to convert Spine files, not provides the program itself.
 - Download URL: [SpineSkeletonDataConverter](https://github.com/wang606/SpineSkeletonDataConverter/releases)
 - Configure the path to `SpineSkeletonDataConverter.exe` in the settings interface, and check the "启用 Spine 转换" (Enable Spine Conversion) option.
+- Configure the path to `SpineAtlasDowngrade.exe` in the settings interface, and check the "Spine降级" (Spine Downgrade) option. If enabled, the program will convert the Spine Atlas file to Spine 3.8 format in the Asset Extraction process.
 
 **Note**: This is an experimental feature, not all mods can be successfully upgraded, suitable only for advanced users.
 
@@ -124,9 +125,10 @@ This feature is for creating new Mods, such as quickly packaging modified assets
 1. Drag and drop or browse to select the Bundle file to extract assets from
 2. Select an output directory, the program will automatically create a subdirectory named after the Bundle file
 3. Check the asset types to extract in the settings window
-4. Click the "开始提取" (Start Extraction) button, the program will automatically extract the specified types of assets
+4. (Optional) In the settings window, configure `SpineAtlasDowngrade.exe` program path, and enable "启用 Spine 降级" (Enable Spine Downgrade) option. If enabled, the program will automatically call the third-party program to convert the Spine files to Spine 3.8 format in the extraction process.
+5. Click the "开始提取" (Start Extraction) button, the program will extract the specified types of assets
 
-This feature is for extracting assets from existing Bundle files for modification or analysis.
+This feature is for extracting assets from existing Bundle files for modification or preview.
 
 ### JP/GB转换 (JP/GB Conversion)
 Conversion between JP server format (two files) and Global server format (one file).

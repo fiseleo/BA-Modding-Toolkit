@@ -16,10 +16,12 @@ from utils import CRCUtils, no_log, get_skel_version
 
 # -------- 类型别名 ---------
 
-# AssetKey 表示资源的唯一标识符，在不同的流程中可以使用不同的键
-# str 类型 表示资源名称，在资源打包工具中使用
-# int 类型 表示 path_id
-# tuple[str, str] 类型 表示 (名称, 类型) 元组
+"""
+AssetKey 表示资源的唯一标识符，在不同的流程中可以使用不同的键
+    str 类型 表示资源名称，在资源打包工具中使用
+    int 类型 表示 path_id
+    tuple[str, str] 类型 表示 (名称, 类型) 元组
+"""
 AssetKey = str | int | tuple[str, str]
 
 # 资源的具体内容，可以是字节数据、PIL图像或None
@@ -55,6 +57,25 @@ class SpineOptions:
             and self.converter_path
             and self.converter_path.exists()
             and self.target_version
+            and self.target_version.count(".") == 2
+        )
+
+@dataclass
+class SpineDowngradeOptions:
+    """封装了Spine版本降级相关的选项。"""
+    enabled: bool = False
+    skel_converter_path: Path | None = None
+    atlas_converter_path: Path | None = None
+    target_version: str = "3.8.75"
+
+    def is_valid(self) -> bool:
+        """检查Spine降级功能是否已配置并可用。"""
+        return (
+            self.enabled
+            and self.skel_converter_path is not None
+            and self.skel_converter_path.exists()
+            and self.atlas_converter_path is not None
+            and self.atlas_converter_path.exists()
             and self.target_version.count(".") == 2
         )
 
@@ -219,79 +240,128 @@ def _save_and_crc(
         log(traceback.format_exc())
         return False, f"保存或修正文件时发生错误: {e}"
 
-def upgrade_skel(
-    raw_skel_data: bytes,
-    spine_options: SpineOptions,
+def convert_skel(
+    input_data: bytes | Path,
+    converter_path: Path,
+    target_version: str,
+    output_path: Path | None = None,
     log: LogFunc = no_log,
 ) -> tuple[bool, bytes]:
     """
-    使用外部工具升级 .skel 文件。
-    返回 (是否成功, skel数据) 的元组。
+    通用的 Spine .skel 文件转换器，支持升级和降级。
+    
+    Args:
+        input_data: 输入数据，可以是 bytes 或 Path 对象
+        converter_path: 转换器可执行文件的路径
+        target_version: 目标版本号 (例如 "4.2.33" 或 "3.8.75")
+        output_path: 可选的输出文件路径，如果提供则将结果保存到该路径
+        log: 日志记录函数
+        
+    Returns:
+        tuple[bool, bytes]: (是否成功, 转换后的数据)
     """
-    # 检查Spine升级功能是否可用
-    if not spine_options.is_enabled():
-        log(f"  > ⚠️ Spine升级功能未启用或配置无效")
-        return False, raw_skel_data
-
-    temp_in_path, temp_out_path = None, None
+    # 准备输入文件
+    temp_input_path = None
+    is_input_temp = False
+    
     try:
-        # 使用临时文件来进行转换
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".skel") as temp_in_file:
-            temp_in_file.write(raw_skel_data)
-            temp_in_path = Path(temp_in_file.name)
-            
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".skel") as temp_out_file:
-            temp_out_path = Path(temp_out_file.name)
-
+        if isinstance(input_data, bytes):
+            # 如果输入是 bytes，创建临时文件
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".skel") as temp_input_file:
+                temp_input_file.write(input_data)
+                temp_input_path = Path(temp_input_file.name)
+                is_input_temp = True
+        else:
+            # 如果输入是 Path，直接使用
+            temp_input_path = input_data
+            is_input_temp = False
+        
+        # 检测当前版本
+        current_version = get_skel_version(temp_input_path, log)
+        if not current_version:
+            log(f"  > ⚠️ 无法检测当前 .skel 文件版本")
+            if isinstance(input_data, bytes):
+                return False, input_data
+            else:
+                with open(input_data, "rb") as f:
+                    return False, f.read()
+        
+        # 准备输出文件
+        temp_output_path = None
+        is_output_temp = False
+        
+        if output_path:
+            # 如果提供了输出路径，使用它
+            temp_output_path = output_path
+            is_output_temp = False
+        else:
+            # 否则创建临时文件
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".skel") as temp_output_file:
+                temp_output_path = Path(temp_output_file.name)
+                is_output_temp = True
+        
         # 构建并执行命令
         command = [
-            str(spine_options.converter_path),
-            str(temp_in_path),
-            str(temp_out_path),
+            str(converter_path),
+            str(temp_input_path),
+            str(temp_output_path),
             "-v",
-            spine_options.target_version
+            target_version
         ]
-        log(f"    > 执行命令: {' '.join(map(str, command))}")
-        # 命令格式：SpineConverter.exe input.skel output.skel -v 4.2.33
+        
+        log(f"    > 正在转换skel文件: {temp_input_path.name}")
+        log(f"      > 当前版本: {current_version} -> 目标版本: {target_version}")
+        log(f"      > 执行命令：{' '.join(command)}")
         
         result = subprocess.run(
             command, 
             capture_output=True, 
             text=True, 
-            check=True, 
             encoding='utf-8', 
-            errors='ignore'
+            errors='ignore',
+            check=False  # 不使用 check=True，以便手动处理返回码
         )
         
-        if result.stdout:
-            log(f"    > Spine 转换器输出:\n{result.stdout}")
-        if result.stderr:
-            log(f"    > Spine 转换器错误输出:\n{result.stderr}")
+        if result.returncode == 0:
+            log(f"      ✓ skel转换成功")
+            
+            # 读取转换后的内容
+            with open(temp_output_path, "rb") as f_out:
+                converted_data = f_out.read()
+            
+            return True, converted_data
+        else:
+            log(f"      ✗ skel转换失败:")
+            log(f"        stdout: {result.stdout.strip()}")
+            log(f"        stderr: {result.stderr.strip()}")
+            
+            # 返回原始数据
+            if isinstance(input_data, bytes):
+                return False, input_data
+            else:
+                with open(input_data, "rb") as f:
+                    return False, f.read()
 
-        # 读取转换后的内容
-        with open(temp_out_path, "rb") as f_out:
-            upgraded_data = f_out.read()
-        return True, upgraded_data
-
-    except FileNotFoundError:
-        log(f"    ❌ Spine 转换器未找到: {spine_options.converter_path}")
-        return False, raw_skel_data
-    except subprocess.CalledProcessError as e:
-        log(f"    ❌ Spine 转换器执行失败 (返回码: {e.returncode})")
-        if e.stdout: log(f"      > 输出: {e.stdout}")
-        if e.stderr: log(f"      > 错误: {e.stderr}")
-        return False, raw_skel_data
     except Exception as e:
-        log(f"    ❌ 升级 .skel 文件时发生未知错误: {e}")
-        return False, raw_skel_data
+        log(f"    ❌ skel转换失败: {e}")
+        if isinstance(input_data, bytes):
+            return False, input_data
+        else:
+            with open(input_data, "rb") as f:
+                return False, f.read()
     finally:
         # 清理临时文件
-        for p in [temp_in_path, temp_out_path]:
-            if p and p.exists():
-                try:
-                    p.unlink()
-                except OSError:
-                    log(f"    ❌ 无法删除临时文件: {p}")
+        if is_input_temp and temp_input_path and temp_input_path.exists():
+            try:
+                temp_input_path.unlink()
+            except OSError:
+                log(f"    ❌ 无法删除临时输入文件: {temp_input_path}")
+        
+        if is_output_temp and temp_output_path and temp_output_path.exists():
+            try:
+                temp_output_path.unlink()
+            except OSError:
+                log(f"    ❌ 无法删除临时输出文件: {temp_output_path}")
 
 def _handle_skel_upgrade(
     skel_bytes: bytes,
@@ -317,9 +387,10 @@ def _handle_skel_upgrade(
         if current_version and not current_version.startswith(target_major_minor):
             log(f"      > spine 版本不匹配 (当前: {current_version}, 目标: {spine_options.target_version})。尝试升级...")
 
-            skel_success, upgraded_content = upgrade_skel(
-                raw_skel_data=skel_bytes,
-                spine_options=spine_options,
+            skel_success, upgraded_content = convert_skel(
+                input_data=skel_bytes,
+                converter_path=spine_options.converter_path,
+                target_version=spine_options.target_version,
                 log=log
             )
             if skel_success:
@@ -504,20 +575,90 @@ def process_asset_packing(
         log(traceback.format_exc())
         return False, f"处理过程中发生严重错误:\n{e}"
 
+def _run_spine_atlas_downgrader(
+    input_atlas: Path, 
+    output_dir: Path, 
+    converter_path: Path,
+    log: LogFunc = no_log
+) -> bool:
+    """使用 SpineAtlasDowngrade.exe 转换图集数据。"""
+    try:
+        # 转换器需要在源图集所在的目录中找到源PNG文件。
+        # input_atlas 路径已指向包含所有必要文件的临时目录。
+        cmd = [str(converter_path), str(input_atlas), str(output_dir)]
+        log(f"    > 正在转换图集: {input_atlas.name}")
+        log(f"      > 执行命令：{' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', check=False)
+        
+        if result.returncode == 0:
+            return True
+        else:
+            log(f"      ✗ 图集转换失败:")
+            log(f"        stdout: {result.stdout.strip()}")
+            log(f"        stderr: {result.stderr.strip()}")
+            return False
+    except Exception as e:
+        log(f"      ✗ 运行图集转换器时出错: {e}")
+        return False
+
+def _process_spine_group_downgrade(
+    skel_path: Path,
+    atlas_path: Path,
+    output_dir: Path,
+    downgrade_options: SpineDowngradeOptions,
+    log: LogFunc = no_log,
+) -> None:
+    """
+    处理单个Spine资产组（skel, atlas, pngs）的降级。
+    始终尝试进行降级操作。
+    """
+    version = get_skel_version(skel_path, log)
+    log(f"    > 检测到Spine版本: {version or '未知'}，尝试降级...")
+    with tempfile.TemporaryDirectory() as conv_out_dir_str:
+        conv_output_dir = Path(conv_out_dir_str)
+        
+        # 降级 Atlas 和关联的 PNG
+        atlas_success = _run_spine_atlas_downgrader(
+            atlas_path, conv_output_dir, downgrade_options.atlas_converter_path, log
+        )
+        
+        if atlas_success:
+            log("      > Atlas 降级成功")
+            for converted_file in conv_output_dir.iterdir():
+                shutil.copy2(converted_file, output_dir / converted_file.name)
+                log(f"        - {converted_file.name}")
+        else:
+            log("      ✗ Atlas 降级失败。")
+
+        # 降级 Skel
+        output_skel_path = output_dir / skel_path.name
+        skel_success, _ = convert_skel(
+            input_data=skel_path,
+            converter_path=downgrade_options.skel_converter_path,
+            target_version=downgrade_options.target_version,
+            output_path=output_skel_path,
+            log=log
+        )
+        if not skel_success:
+            log("    ✗ skel 转换失败，将复制原始 .skel 文件。")
+
 def process_asset_extraction(
     bundle_path: Path,
     output_dir: Path,
     asset_types_to_extract: set[str],
+    downgrade_options: SpineDowngradeOptions | None = None,
     log: LogFunc = no_log,
 ) -> tuple[bool, str]:
     """
     从指定的 Bundle 文件中提取选定类型的资源到输出目录。
     支持 Texture2D (保存为 .png) 和 TextAsset (按原名保存)。
+    如果启用了Spine降级选项，将自动处理Spine 4.x到3.8的降级。
 
     Args:
         bundle_path: 目标 Bundle 文件的路径。
         output_dir: 提取资源的保存目录。
         asset_types_to_extract: 需要提取的资源类型集合 (如 {"Texture2D", "TextAsset"})。
+        downgrade_options: Spine资源降级的选项。
         log: 日志记录函数。
 
     Returns:
@@ -533,47 +674,91 @@ def process_asset_extraction(
         if not env:
             return False, "无法加载 Bundle 文件。请检查文件是否损坏。"
 
-        # 确保输出目录存在
         output_dir.mkdir(parents=True, exist_ok=True)
+        downgrade_enabled = downgrade_options and downgrade_options.is_valid()
 
-        extraction_count = 0
-        extracted_files = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_extraction_dir = Path(temp_dir)
+            log(f"  > 使用临时目录: {temp_extraction_dir}")
 
-        for obj in env.objects:
-            if obj.type.name in asset_types_to_extract:
-                data = obj.read()
-                resource_name = getattr(data, 'm_Name', None)
-                if not resource_name:
-                    log(f"  > 跳过一个未命名的 {obj.type.name} 资源")
+            # --- 阶段 1: 统一提取所有相关资源到临时目录 ---
+            log("\n--- 提取资源到临时目录 ---")
+            extraction_count = 0
+            for obj in env.objects:
+                if obj.type.name not in asset_types_to_extract:
                     continue
-
                 try:
-                    if obj.type.name == "Texture2D":
-                        output_path = output_dir / f"{resource_name}.png"
-                        log(f"  - 正在提取 Texture2D: {resource_name}.png")
-                        image = data.image.convert("RGBA")
-                        image.save(output_path)
-                        extracted_files.append(output_path.name)
-                        extraction_count += 1
+                    data = obj.read()
+                    resource_name = getattr(data, 'm_Name', None)
+                    if not resource_name:
+                        log(f"  > 跳过一个未命名的 {obj.type.name} 资源")
+                        continue
 
-                    elif obj.type.name == "TextAsset":
-                        output_path = output_dir / resource_name
-                        log(f"  - 正在提取 TextAsset: {resource_name}")
+                    if obj.type.name == "TextAsset":
+                        dest_path = temp_extraction_dir / resource_name
                         asset_bytes = data.m_Script.encode("utf-8", "surrogateescape")
-                        with open(output_path, "wb") as f:
-                            f.write(asset_bytes)
-                        extracted_files.append(output_path.name)
-                        extraction_count += 1
-
+                        dest_path.write_bytes(asset_bytes)
+                    elif obj.type.name == "Texture2D":
+                        dest_path = temp_extraction_dir / f"{resource_name}.png"
+                        data.image.convert("RGBA").save(dest_path)
+                    
+                    log(f"  - {dest_path.name}")
+                    extraction_count += 1
                 except Exception as e:
-                    log(f"  ❌ 提取资源 '{resource_name}' 时发生错误: {e}")
+                    log(f"  ❌ 提取资源 {getattr(data, 'm_Name', 'N/A')} 时发生错误: {e}")
 
-        if extraction_count == 0:
-            msg = "未找到任何指定类型的资源进行提取。"
-            log(f"⚠️ {msg}")
-            return True, msg
+            if extraction_count == 0:
+                msg = "未找到任何指定类型的资源进行提取。"
+                log(f"⚠️ {msg}")
+                return True, msg
 
-        success_msg = f"成功提取 {extraction_count} 个资源。"
+            # --- 阶段 2: 处理并移动文件 ---
+            if not downgrade_enabled:
+                log("\n--- 移动提取的文件到输出目录 ---")
+                log("  > Spine降级功能未启用或配置无效，执行标准复制。")
+                for item in temp_extraction_dir.iterdir():
+                    shutil.copy2(item, output_dir / item.name)
+            else:
+                log("\n--- 处理Spine资产并降级 ---")
+                processed_files = set()
+                skel_files = list(temp_extraction_dir.glob("*.skel"))
+
+                if not skel_files:
+                    log("  > 在bundle中未找到 .skel 文件，将复制所有已提取文件。")
+                
+                for skel_path in skel_files:
+                    base_name = skel_path.stem
+                    atlas_path = skel_path.with_suffix(".atlas")
+                    log(f"\n  > 正在处理资产组: {base_name}")
+
+                    if not atlas_path.exists():
+                        log(f"    - 警告: 找到 {skel_path.name} 但缺少匹配的 {atlas_path.name}，将作为独立文件处理。")
+                        continue
+                    
+                    # 标记此资产组中的所有文件为已处理
+                    png_paths = list(temp_extraction_dir.glob(f"{base_name}*.png"))
+                    processed_files.add(skel_path)
+                    processed_files.add(atlas_path)
+                    processed_files.update(png_paths)
+
+                    # 调用辅助函数处理该资产组
+                    _process_spine_group_downgrade(
+                        skel_path, atlas_path, output_dir, downgrade_options, log
+                    )
+                
+                # --- 阶段 3: 复制剩余的独立文件 ---
+                remaining_files_found = False
+                for item in temp_extraction_dir.iterdir():
+                    if item not in processed_files:
+                        remaining_files_found = True
+                        log(f"  - 复制独立文件: {item.name}")
+                        shutil.copy2(item, output_dir / item.name)
+                
+                if not remaining_files_found:
+                    log("  > 没有需要复制的独立文件。")
+
+        total_files_extracted = len(list(output_dir.iterdir()))
+        success_msg = f"提取完成，共输出 {total_files_extracted} 个文件。"
         log(f"\n🎉 {success_msg}")
         return True, success_msg
 
