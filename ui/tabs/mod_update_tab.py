@@ -108,12 +108,12 @@ class ModUpdateTab(TabFrame):
             messagebox.showwarning("操作无效", "请一次只拖放一个文件。")
             return
         path = Path(event.data.strip('{}'))
-        self.set_file_path('old_mod_path', self.old_mod_label, path, "旧版 Mod", self.auto_find_new_bundle)
+        self.set_file_path('old_mod_path', self.old_mod_label, path, "旧版 Mod", callback=self.auto_find_new_bundle)
 
     def browse_old_mod(self):
         p = filedialog.askopenfilename(title="选择旧版 Mod Bundle")
         if p:
-            self.set_file_path('old_mod_path', self.old_mod_label, Path(p), "旧版 Mod", self.auto_find_new_bundle)
+            self.set_file_path('old_mod_path', self.old_mod_label, Path(p), "旧版 Mod", callback=self.auto_find_new_bundle)
 
     def drop_new_mod(self, event):
         if is_multiple_drop(event.data):

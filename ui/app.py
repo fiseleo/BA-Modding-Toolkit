@@ -310,5 +310,7 @@ class App(tk.Frame):
                                                 enable_padding_var=self.enable_padding_var,
                                                 enable_crc_correction_var=self.enable_crc_correction_var,
                                                 create_backup_var=self.create_backup_var,
-                                                compression_method_var=self.compression_method_var)
+                                                compression_method_var=self.compression_method_var,
+                                                game_resource_dir_var=self.game_resource_dir_var,
+                                                auto_detect_subdirs_var=self.auto_detect_subdirs_var)
         self.notebook.add(jp_gb_conversion_tab, text="JP/GB转换")

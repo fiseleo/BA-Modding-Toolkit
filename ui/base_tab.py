@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 from pathlib import Path
 import threading
+from typing import Callable
 
 from .components import Theme
 
@@ -17,20 +18,20 @@ class TabFrame(ttk.Frame):
     def create_widgets(self, **kwargs):
         raise NotImplementedError("子类必须实现 create_widgets 方法")
 
-    def run_in_thread(self, target, *args):
+    def run_in_thread(self, target: Callable, *args):
         thread = threading.Thread(target=target, args=args)
         thread.daemon = True
         thread.start()
 
-    def set_file_path(self, path_var_name, label_widget, path: Path, file_type_name, auto_output_func=None):
+    def set_file_path(self, path_var_name: str, label_widget: tk.Widget, path: Path, file_type_name: str, callback: Callable[[], None] | None = None):
         setattr(self, path_var_name, path)
         label_widget.config(text=f"{path.name}", fg=Theme.COLOR_SUCCESS)
         self.logger.log(f"已加载 {file_type_name}: {path.name}")
         self.logger.status(f"已加载 {file_type_name}")
-        if auto_output_func:
-            auto_output_func()
+        if callback:
+            callback()
 
-    def set_folder_path(self, path_var_name, label_widget, path: Path, folder_type_name):
+    def set_folder_path(self, path_var_name: str, label_widget: tk.Widget, path: Path, folder_type_name: str):
         setattr(self, path_var_name, path)
         label_widget.config(text=f"{path.name}", fg=Theme.COLOR_SUCCESS)
         self.logger.log(f"已加载 {folder_type_name}: {path.name}")
@@ -38,9 +39,14 @@ class TabFrame(ttk.Frame):
 
     def get_game_search_dirs(self, base_game_dir: Path, auto_detect_subdirs: bool) -> list[Path]:
         if auto_detect_subdirs:
-            return [
-                base_game_dir / "BlueArchive_Data/StreamingAssets/PUB/Resource/GameData/Windows",
-                base_game_dir / "BlueArchive_Data/StreamingAssets/PUB/Resource/Preload/Windows"
-            ]
+            suffixes = ["",
+                "BlueArchive_Data/StreamingAssets/PUB/Resource/GameData/Windows",
+                "BlueArchive_Data/StreamingAssets/PUB/Resource/Preload/Windows",
+                "GameData/Windows",
+                "Preload/Windows",
+                "GameData/Android",
+                "Preload/Android",
+                ]
+            return [base_game_dir / suffix for suffix in suffixes]
         else:
             return [base_game_dir]
