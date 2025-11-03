@@ -916,6 +916,101 @@ def get_filename_prefix(filename: str, log: LogFunc = no_log) -> tuple[str | Non
 
     return search_prefix, "前缀提取成功"
 
+def find_jp_bundle_by_type(
+    source_jp_path: Path,
+    target_type: Literal['textassets', 'textures'],
+    search_dirs: Path | list[Path],
+    log: LogFunc = no_log,
+) -> Path | None:
+    """
+    根据一个日服bundle文件，查找指定类型的对应文件。
+    例如，根据 textassets 文件查找对应的 textures 文件。
+
+    Args:
+        source_jp_path: 已知的日服bundle文件路径。
+        target_type: 要查找的文件类型 ('textassets' 或 'textures')。
+        search_dirs: 用于查找的目录列表。
+        log: 日志记录函数。
+
+    Returns:
+        找到的对应文件的路径，如果未找到则返回 None。
+    """
+    if isinstance(search_dirs, Path):
+        search_dirs = [search_dirs]
+
+    # 使用 get_filename_prefix 获取通用的文件名前缀
+    prefix, prefix_message = get_filename_prefix(source_jp_path.name, log)
+    if not prefix:
+        log(f"  > ❌ 查找失败: {prefix_message}")
+        return None
+    log(f"  > 使用文件前缀: '{prefix}'")
+    target_keyword = f'-{target_type}-'
+
+    if target_keyword in source_jp_path.name:
+        log(f"  > 源文件已是 '{target_type}' 类型。")
+        return source_jp_path
+
+    # 在所有搜索目录中查找匹配的文件
+    for search_dir in search_dirs:
+        if not (search_dir.exists() and search_dir.is_dir()):
+            continue
+        
+        for file_path in search_dir.iterdir():
+            # 检查文件是否以通用前缀开头，并包含目标类型的关键词
+            if file_path.is_file() and file_path.name.startswith(prefix) and target_keyword in file_path.name:
+                log(f"  ✅ 成功找到: {file_path}")
+                return file_path
+    
+    log("  > ❌ 未能找到匹配的文件。")
+    return None
+
+def find_jp_counterparts(
+    global_bundle_path: Path,
+    search_dirs: list[Path],
+    log: LogFunc = no_log,
+) -> tuple[Path | None, Path | None]:
+    """
+    根据国际服bundle文件，查找其对应的日服 TextAsset 和 Texture2D bundle 文件。
+
+    Args:
+        global_bundle_path: 国际服bundle文件的路径。
+        search_dirs: 用于查找的目录列表。
+        log: 日志记录函数。
+
+    Returns:
+        一个元组 (jp_text_path, jp_tex2d_path)，未找到则为 None。
+    """
+    log(f"正在为 '{global_bundle_path.name}' 搜索对应的JP文件...")
+
+    # 1. 从国际服文件名提取前缀
+    prefix, prefix_message = get_filename_prefix(global_bundle_path.name, log)
+    if not prefix:
+        log(f"  > ❌ 查找失败: {prefix_message}")
+        return None, None
+    log(f"  > 使用文件前缀: '{prefix}'")
+
+    jp_text_path: Path | None = None
+    jp_tex2d_path: Path | None = None
+
+    # 2. 在搜索目录中查找匹配前缀且包含特定关键词的文件
+    for search_dir in search_dirs:
+        if not (search_dir.exists() and search_dir.is_dir()):
+            continue
+        
+        for file_path in search_dir.iterdir():
+            if file_path.is_file() and file_path.name.startswith(prefix):
+                if '-textassets-' in file_path.name:
+                    jp_text_path = file_path
+                    log(f"  > 找到JP TextAsset文件: {file_path.name}")
+                elif '-textures-' in file_path.name:
+                    jp_tex2d_path = file_path
+                    log(f"  > 找到JP Texture2D文件: {file_path.name}")
+            
+            # 如果两个都找到了，可以提前结束搜索
+            if jp_text_path and jp_tex2d_path:
+                return jp_text_path, jp_tex2d_path
+
+    return jp_text_path, jp_tex2d_path
 
 def find_new_bundle_path(
     old_mod_path: Path,
@@ -941,10 +1036,8 @@ def find_new_bundle_path(
     # 2. 处理单个目录或目录列表
     if isinstance(game_resource_dir, Path):
         search_dirs = [game_resource_dir]
-        log(f"  > 搜索目录: {game_resource_dir}")
     else:
         search_dirs = game_resource_dir
-        log(f"  > 搜索目录列表: {[str(d) for d in search_dirs]}")
 
     # 3. 查找所有候选文件（前缀相同且扩展名一致）
     candidates: list[Path] = []
@@ -954,10 +1047,7 @@ def find_new_bundle_path(
             candidates.extend(dir_candidates)
     
     if not candidates:
-        if isinstance(game_resource_dir, Path):
-            msg = f"在指定目录 '{game_resource_dir}' 中未找到任何匹配的文件。"
-        else:
-            msg = f"在所有指定目录中未找到任何匹配的文件。"
+        msg = f"在指定目录中未找到任何匹配的文件。"
         log(f"  > 失败: {msg}")
         return None, msg
     log(f"  > 找到 {len(candidates)} 个候选文件，正在验证内容...")

@@ -173,52 +173,59 @@ class JpGbConversionTab(TabFrame):
             return
         self.run_in_thread(self._find_worker, source_type)
 
-    def _find_jp_counterparts(self, global_path: Path, search_dirs: list[Path]) -> tuple[Path | None, Path | None]:
-        """从Global文件路径，查找对应的两个JP文件"""
-        prefix, _ = processing.get_filename_prefix(global_path.name, self.logger.log)
-        if not prefix:
-            return None, None
-
-        found_textasset = None
-        found_texture2d = None
-
-        for search_dir in search_dirs:
-            if search_dir.exists() and search_dir.is_dir():
-                for f in search_dir.iterdir():
-                    if f.is_file() and f.name.startswith(prefix) and f.suffix == '.bundle':
-                        if '-textassets-' in f.name:
-                            found_textasset = f
-                        elif '-textures-' in f.name:
-                            found_texture2d = f
-                    if found_textasset and found_texture2d:
-                        return found_textasset, found_texture2d
-        return found_textasset, found_texture2d
-
     def _find_worker(self, source_type: str):
-        """在工作线程中执行文件查找"""
+        """在工作线程中执行文件查找，统一处理逻辑"""
         self.logger.status("正在自动查找对应文件...")
         base_game_dir = Path(self.game_resource_dir_var.get())
-        search_paths = self.get_game_search_dirs(base_game_dir, self.auto_detect_subdirs.get())
+        game_search_dirs = self.get_game_search_dirs(base_game_dir, self.auto_detect_subdirs.get())
 
-        if self.mode_var.get() == "global_to_jp":
-            if source_type == 'global' and self.global_bundle_path:
-                self.logger.log(f"正在从 '{self.global_bundle_path.name}' 查找JP文件...")
-                jp_text_path, jp_tex2d_path = self._find_jp_counterparts(self.global_bundle_path, search_paths)
-                self._set_file_ui(self.jp_textasset_label, 'jp_textasset_bundle_path', jp_text_path, "JP TextAsset Bundle")
-                self._set_file_ui(self.jp_texture2d_label, 'jp_texture2d_bundle_path', jp_tex2d_path, "JP Texture2D Bundle")
+        if source_type == 'global' and self.global_bundle_path:
+            source_path = self.global_bundle_path
+            self.logger.log(f"正在从 '{source_path.name}' 查找JP文件...")
+            jp_text_path, jp_tex2d_path = processing.find_jp_counterparts(
+                source_path, game_search_dirs, self.logger.log
+            )
+            self._set_file_ui(self.jp_textasset_label, 'jp_textasset_bundle_path', jp_text_path, "JP TextAsset Bundle")
+            self._set_file_ui(self.jp_texture2d_label, 'jp_texture2d_bundle_path', jp_tex2d_path, "JP Texture2D Bundle")
         
-        elif self.mode_var.get() == "jp_to_global":
-            source_path = None
-            if source_type == 'jp_textasset':
-                source_path = self.jp_textasset_bundle_path
-            elif source_type == 'jp_texture2d':
-                source_path = self.jp_texture2d_bundle_path
+        elif source_type == 'jp_textasset':
+            source_path = self.jp_textasset_bundle_path
+            if not source_path:
+                self.logger.status("自动查找取消")
+                return
+
+            self.logger.log(f"正在从 '{source_path.name}' 查找关联文件...")
             
-            if source_path:
-                self.logger.log(f"正在从 '{source_path.name}' 查找Global文件...")
-                global_path, _ = processing.find_new_bundle_path(source_path, search_paths, self.logger.log)
+            # 1. 查找对应的 Texture2D Bundle 文件
+            tex2d_path = processing.find_jp_bundle_by_type(
+                source_path, 'textures', source_path.parent, self.logger.log
+            )
+            self._set_file_ui(self.jp_texture2d_label, 'jp_texture2d_bundle_path', tex2d_path, "JP Texture2D Bundle")
+
+            # 2. 固定使用找到的 Texture2D Bundle 路径来查找 Global Bundle
+            if tex2d_path:
+                global_path, _ = processing.find_new_bundle_path(tex2d_path, game_search_dirs, self.logger.log)
                 self._set_file_ui(self.global_label, 'global_bundle_path', global_path, "Global Bundle")
 
+        elif source_type == 'jp_texture2d':
+            source_path = self.jp_texture2d_bundle_path
+            if not source_path:
+                self.logger.status("自动查找取消")
+                return
+
+            self.logger.log(f"正在从 '{source_path.name}' 查找关联文件...")
+            
+            # 1. 查找对应的 TextAsset 文件
+            text_path = processing.find_jp_bundle_by_type(
+                source_path, 'textassets', source_path.parent, self.logger.log
+            )
+            self._set_file_ui(self.jp_textasset_label, 'jp_textasset_bundle_path', text_path, "JP TextAsset Bundle")
+
+            # 2. 直接使用当前的 Texture2D Bundle 路径来查找 Global Bundle
+            global_path, _ = processing.find_new_bundle_path(source_path, game_search_dirs, self.logger.log)
+            self._set_file_ui(self.global_label, 'global_bundle_path', global_path, "Global Bundle")
+        else:
+            self.logger.log("  > ❌ 配置不正确，未能找到关联文件。")
         self.logger.status("自动查找完成")
 
     # --- 转换逻辑 ---
