@@ -76,8 +76,11 @@ class SpineDowngradeOptions:
             and self.skel_converter_path.exists()
             and self.atlas_converter_path is not None
             and self.atlas_converter_path.exists()
+            and self.target_version
             and self.target_version.count(".") == 2
         )
+
+# ====== 读取与保存相关 ======
 
 def load_bundle(
     bundle_path: Path,
@@ -240,6 +243,8 @@ def _save_and_crc(
         log(traceback.format_exc())
         return False, f"保存或修正文件时发生错误: {e}"
 
+# ====== Spine 转换工具相关 ======
+
 def convert_skel(
     input_data: bytes | Path,
     converter_path: Path,
@@ -260,108 +265,65 @@ def convert_skel(
     Returns:
         tuple[bool, bytes]: (是否成功, 转换后的数据)
     """
-    # 准备输入文件
-    temp_input_path = None
-    is_input_temp = False
-    
+    # 统一将输入数据读取为字节
+    original_bytes: bytes
+    if isinstance(input_data, Path):
+        try:
+            original_bytes = input_data.read_bytes()
+        except OSError as e:
+            log(f"  > ❌ 无法读取输入文件 '{input_data}': {e}")
+            return False, b""
+    else:
+        original_bytes = input_data
+
     try:
-        if isinstance(input_data, bytes):
-            # 如果输入是 bytes，创建临时文件
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".skel") as temp_input_file:
-                temp_input_file.write(input_data)
-                temp_input_path = Path(temp_input_file.name)
-                is_input_temp = True
-        else:
-            # 如果输入是 Path，直接使用
-            temp_input_path = input_data
-            is_input_temp = False
-        
-        # 检测当前版本
-        current_version = get_skel_version(temp_input_path, log)
-        if not current_version:
-            log(f"  > ⚠️ 无法检测当前 .skel 文件版本")
-            if isinstance(input_data, bytes):
-                return False, input_data
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir_path = Path(temp_dir)
+            
+            # 准备输入文件
+            temp_input_path = temp_dir_path / "input.skel"
+            temp_input_path.write_bytes(original_bytes)
+
+            current_version = get_skel_version(temp_input_path, log)
+            if not current_version:
+                log("  > ⚠️ 无法检测当前 .skel 文件版本")
+                return False, original_bytes
+
+            # 准备输出文件
+            temp_output_path = output_path if output_path else temp_dir_path / "output.skel"
+            
+            command = [
+                str(converter_path),
+                str(temp_input_path),
+                str(temp_output_path),
+                "-v",
+                target_version
+            ]
+            
+            log(f"    > 正在转换skel文件: {temp_input_path.name}")
+            log(f"      > 当前版本: {current_version} -> 目标版本: {target_version}")
+            log(f"      > 执行命令：{' '.join(command)}")
+            
+            result = subprocess.run(
+                command, 
+                capture_output=True, 
+                text=True, 
+                encoding='utf-8', 
+                errors='ignore',
+            )
+            
+            if result.returncode == 0:
+                log("      ✓ skel转换成功")
+                return True, temp_output_path.read_bytes()
             else:
-                with open(input_data, "rb") as f:
-                    return False, f.read()
-        
-        # 准备输出文件
-        temp_output_path = None
-        is_output_temp = False
-        
-        if output_path:
-            # 如果提供了输出路径，使用它
-            temp_output_path = output_path
-            is_output_temp = False
-        else:
-            # 否则创建临时文件
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".skel") as temp_output_file:
-                temp_output_path = Path(temp_output_file.name)
-                is_output_temp = True
-        
-        # 构建并执行命令
-        command = [
-            str(converter_path),
-            str(temp_input_path),
-            str(temp_output_path),
-            "-v",
-            target_version
-        ]
-        
-        log(f"    > 正在转换skel文件: {temp_input_path.name}")
-        log(f"      > 当前版本: {current_version} -> 目标版本: {target_version}")
-        log(f"      > 执行命令：{' '.join(command)}")
-        
-        result = subprocess.run(
-            command, 
-            capture_output=True, 
-            text=True, 
-            encoding='utf-8', 
-            errors='ignore',
-            check=False  # 不使用 check=True，以便手动处理返回码
-        )
-        
-        if result.returncode == 0:
-            log(f"      ✓ skel转换成功")
-            
-            # 读取转换后的内容
-            with open(temp_output_path, "rb") as f_out:
-                converted_data = f_out.read()
-            
-            return True, converted_data
-        else:
-            log(f"      ✗ skel转换失败:")
-            log(f"        stdout: {result.stdout.strip()}")
-            log(f"        stderr: {result.stderr.strip()}")
-            
-            # 返回原始数据
-            if isinstance(input_data, bytes):
-                return False, input_data
-            else:
-                with open(input_data, "rb") as f:
-                    return False, f.read()
+                log("      ✗ skel转换失败:")
+                log(f"        stdout: {result.stdout.strip()}")
+                log(f"        stderr: {result.stderr.strip()}")
+                return False, original_bytes
 
     except Exception as e:
         log(f"    ❌ skel转换失败: {e}")
-        if isinstance(input_data, bytes):
-            return False, input_data
-        else:
-            with open(input_data, "rb") as f:
-                return False, f.read()
-    finally:
-        # 清理临时文件
-        if is_input_temp and temp_input_path and temp_input_path.exists():
-            try:
-                temp_input_path.unlink()
-            except OSError:
-                log(f"    ❌ 无法删除临时输入文件: {temp_input_path}")
-        
-        if is_output_temp and temp_output_path and temp_output_path.exists():
-            try:
-                temp_output_path.unlink()
-            except OSError:
-                log(f"    ❌ 无法删除临时输出文件: {temp_output_path}")
+        return False, original_bytes
 
 def _handle_skel_upgrade(
     skel_bytes: bytes,
@@ -406,174 +368,6 @@ def _handle_skel_upgrade(
 
     # 默认返回原始字节
     return skel_bytes
-
-def _apply_replacements(
-    env: UnityPy.Environment,
-    replacement_map: dict[AssetKey, AssetContent],
-    key_func: KeyGeneratorFunc,
-    log: LogFunc = no_log,
-) -> tuple[int, list[str]]:
-    """
-    将“替换清单”中的资源应用到目标环境中。
-
-    Args:
-        env: 目标 UnityPy 环境。
-        replacement_map: 资源替换清单，格式为 { asset_key: content }。
-        key_func: 用于从目标环境中的对象生成 asset_key 的函数。
-        log: 日志记录函数。
-
-    Returns:
-        一个元组 (成功替换的数量, 成功替换的资源日志列表)。
-    """
-    replacement_count = 0
-    replaced_assets_log = []
-    
-    # 创建一个副本用于操作，因为我们会从中移除已处理的项
-    tasks = replacement_map.copy()
-
-    for obj in env.objects:
-        if not tasks:  # 如果清单空了，就提前退出
-            break
-        
-        data = obj.read()
-        asset_key = key_func(obj, data)
-
-        if asset_key in tasks:
-            content = tasks.pop(asset_key)
-            resource_name = getattr(data, 'm_Name', f"<{obj.type.name} 资源>")
-            
-            try:
-                if obj.type.name == "Texture2D":
-                    data.image = content
-                    data.save()
-                elif obj.type.name == "TextAsset":
-                    # content 是 bytes，需要解码成 str
-                    data.m_Script = content.decode("utf-8", "surrogateescape")
-                    data.save()
-                elif obj.type.name == "Mesh":
-                    obj.set_raw_data(content)
-                else: # 适用于 "ALL" 模式下的其他类型
-                    obj.set_raw_data(content)
-
-                replacement_count += 1
-                log_message = f"  - {resource_name} ({obj.type.name})"
-                replaced_assets_log.append(log_message)
-
-            except Exception as e:
-                log(f"  ❌ 错误: 替换资源 '{resource_name}' ({obj.type.name} 类型) 时发生错误: {e}")
-
-    return replacement_count, replaced_assets_log
-
-def process_asset_packing(
-    target_bundle_path: Path,
-    asset_folder: Path,
-    output_dir: Path,
-    save_options: SaveOptions,
-    spine_options: SpineOptions | None = None,
-    log: LogFunc = no_log,
-) -> tuple[bool, str]:
-    """
-    从指定文件夹中，将同名的资源打包到指定的 Bundle 中。
-    支持 .png, .skel, .atlas 文件。
-    - .png 文件将替换同名的 Texture2D 资源 (文件名不含后缀)。
-    - .skel 和 .atlas 文件将替换同名的 TextAsset 资源 (文件名含后缀)。
-    可选地升级 Spine 动画的 Skel 资源版本。
-    此函数将生成的文件保存在工作目录中，以便后续进行"覆盖原文件"操作。
-    因为打包资源的操作在原理上是替换目标Bundle内的资源，因此里面可能有混用打包和替换的叫法。
-    返回 (是否成功, 状态消息) 的元组。
-    
-    Args:
-        target_bundle_path: 目标Bundle文件的路径
-        asset_folder: 包含待打包资源的文件夹路径
-        output_dir: 输出目录，用于保存生成的更新后文件
-        save_options: 保存和CRC修正的选项
-        spine_options: Spine资源升级的选项
-        log: 日志记录函数，默认为空函数
-    """
-    try:
-        env = load_bundle(target_bundle_path, log)
-        if not env:
-            return False, "无法加载目标 Bundle 文件，即使在尝试移除潜在的 CRC 补丁后也是如此。请检查文件是否损坏。"
-        
-        # 1. 从文件夹构建"替换清单"
-        replacement_map: dict[AssetKey, AssetContent] = {}
-        supported_extensions = [".png", ".skel", ".atlas"]
-        input_files = [f for f in asset_folder.iterdir() if f.is_file() and f.suffix.lower() in supported_extensions]
-
-        if not input_files:
-            msg = f"在指定文件夹中没有找到任何支持的文件 ({', '.join(supported_extensions)})。"
-            log(f"⚠️ 警告: {msg}")
-            return False, msg
-
-        for file_path in input_files:
-            asset_key: AssetKey
-            content: AssetContent
-            if file_path.suffix.lower() == ".png":
-                asset_key = file_path.stem
-                content = Image.open(file_path).convert("RGBA")
-            else: # .skel, .atlas
-                asset_key = file_path.name
-                with open(file_path, "rb") as f:
-                    content = f.read()
-                
-                if file_path.suffix.lower() == '.skel':
-                    content = _handle_skel_upgrade(
-                        skel_bytes=content,
-                        resource_name=asset_key,
-                        spine_options=spine_options,
-                        log=log
-                    )
-            replacement_map[asset_key] = content
-        
-        original_tasks_count = len(replacement_map)
-        log(f"找到 {original_tasks_count} 个待处理文件，正在扫描 bundle 并进行替换...")
-
-        # 2. 定义用于在 bundle 中查找资源的 key 生成函数
-        def key_func(obj: UnityPy.classes.Object, data: Any) -> AssetKey | None:
-            if obj.type.name in ["Texture2D", "TextAsset"]:
-                return data.m_Name
-            return None
-
-        # 3. 应用替换
-        replacement_count, _ = _apply_replacements(env, replacement_map, key_func, log)
-
-        if replacement_count == 0:
-            log("⚠️ 警告: 没有执行任何成功的资源打包。")
-            log("请检查：\n1. 文件名是否与 bundle 内的资源名完全匹配。\n2. bundle 文件是否正确。")
-            return False, "没有找到任何名称匹配的资源进行打包。"
-        
-        log(f"\n打包完成: 成功打包 {replacement_count} / {original_tasks_count} 个资源。")
-
-        # 报告未被打包的文件
-        unmatched_keys = set(replacement_map.keys()) - {key for key, _ in replacement_map.items() if key not in [obj.read().m_Name for obj in env.objects]}
-        if unmatched_keys:
-            log("⚠️ 警告: 以下文件未在bundle中找到对应的资源:")
-            # 为了找到原始文件名，我们需要反向查找
-            original_filenames = {f.stem if f.suffix.lower() == '.png' else f.name: f.name for f in input_files}
-            for key in unmatched_keys:
-                log(f"  - {original_filenames.get(key, key)} (尝试匹配: '{key}')")
-
-        # 4. 保存和修正
-        output_path = output_dir / target_bundle_path.name
-        save_ok, save_message = _save_and_crc(
-            env=env,
-            output_path=output_path,
-            original_bundle_path=target_bundle_path,
-            save_options=save_options,
-            log=log
-        )
-
-        if not save_ok:
-            return False, save_message
-
-        log(f"最终文件已保存至: {output_path}")
-        log(f"\n🎉 处理完成！")
-        return True, f"处理完成！\n成功打包 {replacement_count} 个资源。\n\n文件已保存至工作目录，现在可以点击“覆盖原文件”按钮应用更改。"
-
-    except Exception as e:
-        log(f"\n❌ 严重错误: 处理 bundle 文件时发生错误: {e}")
-        log(traceback.format_exc())
-        return False, f"处理过程中发生严重错误:\n{e}"
 
 def _run_spine_atlas_downgrader(
     input_atlas: Path, 
@@ -641,6 +435,287 @@ def _process_spine_group_downgrade(
         )
         if not skel_success:
             log("    ✗ skel 转换失败，将复制原始 .skel 文件。")
+
+
+# ====== 寻找对应文件 ======
+
+def get_filename_prefix(filename: str, log: LogFunc = no_log) -> tuple[str | None, str]:
+    """
+    从旧版Mod文件名中提取用于搜索新版文件的前缀。
+    返回 (前缀字符串, 状态消息) 的元组。
+    """
+    # 1. 通过日期模式确定文件名位置
+    date_match = re.search(r'\d{4}-\d{2}-\d{2}', filename)
+    if not date_match:
+        msg = f"无法在文件名 '{filename}' 中找到日期模式 (YYYY-MM-DD)，无法确定用于匹配的文件前缀。"
+        log(f"  > 失败: {msg}")
+        return None, msg
+
+    # 2. 向前查找可能的日服额外文件名部分
+    prefix_end_index = date_match.start()
+    before_date = filename[:prefix_end_index].removesuffix('-')
+    # 例如在 "...-textures-YYYY-MM-DD..." 中的 "textures"
+
+    parts = before_date.split('-')
+    last_part = parts[-1] if parts else ''
+    
+    # 检查最后一个部分是否是日服版额外的资源类型
+    resource_types = {
+        'textures', 'assets', 'textassets', 'materials',
+        "animationclip", "audio", "meshes", "prefabs", "timelines"
+    }
+    
+    if last_part.lower() in resource_types:
+        # 如果找到了资源类型，则前缀不应该包含这个部分
+        search_prefix = before_date.removesuffix(f'-{last_part}') + '-'
+    else:
+        search_prefix = filename[:prefix_end_index]
+
+    return search_prefix, "前缀提取成功"
+
+def find_new_bundle_path(
+    old_mod_path: Path,
+    game_resource_dir: Path | list[Path],
+    log: LogFunc = no_log,
+) -> tuple[Path | None, str]:
+    """
+    根据旧版Mod文件，在游戏资源目录中智能查找对应的新版文件。
+    支持单个目录路径或目录路径列表。
+    返回 (找到的路径对象, 状态消息) 的元组。
+    """
+    # TODO: 只用Texture2D比较好像不太对，但是it works
+
+    log(f"正在为 '{old_mod_path.name}' 搜索对应文件...")
+
+    # 1. 提取文件名前缀
+    prefix, prefix_message = get_filename_prefix(str(old_mod_path.name), log)
+    if not prefix:
+        return None, prefix_message
+    log(f"  > 文件前缀: '{prefix}'")
+    extension = '.bundle'
+
+    # 2. 处理单个目录或目录列表
+    if isinstance(game_resource_dir, Path):
+        search_dirs = [game_resource_dir]
+    else:
+        search_dirs = game_resource_dir
+
+    # 3. 查找所有候选文件（前缀相同且扩展名一致）
+    candidates: list[Path] = []
+    for search_dir in search_dirs:
+        if search_dir.exists() and search_dir.is_dir():
+            dir_candidates = [f for f in search_dir.iterdir() if f.is_file() and f.name.startswith(prefix) and f.suffix == extension]
+            candidates.extend(dir_candidates)
+    
+    if not candidates:
+        msg = f"在指定目录中未找到任何匹配的文件。"
+        log(f"  > 失败: {msg}")
+        return None, msg
+    log(f"  > 找到 {len(candidates)} 个候选文件，正在验证内容...")
+
+    # 4. 加载旧Mod获取贴图列表
+    old_env = load_bundle(old_mod_path, log)
+    if not old_env:
+        msg = "加载旧版Mod文件失败。"
+        log(f"  > 失败: {msg}")
+        return None, msg
+    
+    old_textures_map = {obj.read().m_Name for obj in old_env.objects if obj.type.name == "Texture2D"}
+    
+    if not old_textures_map:
+        msg = "旧版Mod文件中不包含任何 Texture2D 资源。"
+        log(f"  > 失败: {msg}")
+        return None, msg
+    log(f"  > 旧版Mod包含 {len(old_textures_map)} 个贴图资源。")
+
+    # 5. 遍历候选文件，找到第一个包含匹配贴图的
+    for candidate_path in candidates:
+        log(f"  - 正在检查: {candidate_path.name}")
+        
+        env = load_bundle(candidate_path, log)
+        if not env: continue
+        
+        for obj in env.objects:
+            if obj.type.name == "Texture2D" and obj.read().m_Name in old_textures_map:
+                msg = f"成功确定新版文件: {candidate_path.name}"
+                log(f"  ✅ {msg}")
+                return candidate_path, msg
+    
+    msg = "在所有候选文件中都未找到与旧版Mod贴图名称匹配的资源。无法确定正确的新版文件。"
+    log(f"  > 失败: {msg}")
+    return None, msg
+
+
+# ====== 资源处理相关 ======
+
+def _apply_replacements(
+    env: UnityPy.Environment,
+    replacement_map: dict[AssetKey, AssetContent],
+    key_func: KeyGeneratorFunc,
+    log: LogFunc = no_log,
+) -> tuple[int, list[str], set[AssetKey]]:
+    """
+    将“替换清单”中的资源应用到目标环境中。
+
+    Args:
+        env: 目标 UnityPy 环境。
+        replacement_map: 资源替换清单，格式为 { asset_key: content }。
+        key_func: 用于从目标环境中的对象生成 asset_key 的函数。
+        log: 日志记录函数。
+
+    Returns:
+        一个元组 (成功替换的数量, 成功替换的资源日志列表, 未能匹配的资源键集合)。
+    """
+    replacement_count = 0
+    replaced_assets_log = []
+    
+    # 创建一个副本用于操作，因为我们会从中移除已处理的项
+    tasks = replacement_map.copy()
+
+    for obj in env.objects:
+        if not tasks:  # 如果清单空了，就提前退出
+            break
+        
+        data = obj.read()
+        asset_key = key_func(obj, data)
+
+        if asset_key in tasks:
+            content = tasks.pop(asset_key)
+            resource_name = getattr(data, 'm_Name', f"<{obj.type.name} 资源>")
+            
+            try:
+                if obj.type.name == "Texture2D":
+                    data.image = content
+                    data.save()
+                elif obj.type.name == "TextAsset":
+                    # content 是 bytes，需要解码成 str
+                    data.m_Script = content.decode("utf-8", "surrogateescape")
+                    data.save()
+                elif obj.type.name == "Mesh":
+                    obj.set_raw_data(content)
+                else: # 适用于 "ALL" 模式下的其他类型
+                    obj.set_raw_data(content)
+
+                replacement_count += 1
+                log_message = f"  - {resource_name} ({obj.type.name})"
+                replaced_assets_log.append(log_message)
+
+            except Exception as e:
+                log(f"  ❌ 错误: 替换资源 '{resource_name}' ({obj.type.name} 类型) 时发生错误: {e}")
+
+    return replacement_count, replaced_assets_log, set(tasks.keys())
+
+def process_asset_packing(
+    target_bundle_path: Path,
+    asset_folder: Path,
+    output_dir: Path,
+    save_options: SaveOptions,
+    spine_options: SpineOptions | None = None,
+    log: LogFunc = no_log,
+) -> tuple[bool, str]:
+    """
+    从指定文件夹中，将同名的资源打包到指定的 Bundle 中。
+    支持 .png, .skel, .atlas 文件。
+    - .png 文件将替换同名的 Texture2D 资源 (文件名不含后缀)。
+    - .skel 和 .atlas 文件将替换同名的 TextAsset 资源 (文件名含后缀)。
+    可选地升级 Spine 动画的 Skel 资源版本。
+    此函数将生成的文件保存在工作目录中，以便后续进行"覆盖原文件"操作。
+    因为打包资源的操作在原理上是替换目标Bundle内的资源，因此里面可能有混用打包和替换的叫法。
+    返回 (是否成功, 状态消息) 的元组。
+    
+    Args:
+        target_bundle_path: 目标Bundle文件的路径
+        asset_folder: 包含待打包资源的文件夹路径
+        output_dir: 输出目录，用于保存生成的更新后文件
+        save_options: 保存和CRC修正的选项
+        spine_options: Spine资源升级的选项
+        log: 日志记录函数，默认为空函数
+    """
+    try:
+        env = load_bundle(target_bundle_path, log)
+        if not env:
+            return False, "无法加载目标 Bundle 文件，即使在尝试移除潜在的 CRC 补丁后也是如此。请检查文件是否损坏。"
+        
+        # 1. 从文件夹构建"替换清单"
+        replacement_map: dict[AssetKey, AssetContent] = {}
+        supported_extensions = {".png", ".skel", ".atlas"}
+        input_files = [f for f in asset_folder.iterdir() if f.is_file() and f.suffix.lower() in supported_extensions]
+
+        if not input_files:
+            msg = f"在指定文件夹中没有找到任何支持的文件 ({', '.join(supported_extensions)})。"
+            log(f"⚠️ 警告: {msg}")
+            return False, msg
+
+        for file_path in input_files:
+            asset_key: AssetKey
+            content: AssetContent
+            if file_path.suffix.lower() == ".png":
+                asset_key = file_path.stem
+                content = Image.open(file_path).convert("RGBA")
+            else: # .skel, .atlas
+                asset_key = file_path.name
+                with open(file_path, "rb") as f:
+                    content = f.read()
+                
+                if file_path.suffix.lower() == '.skel':
+                    content = _handle_skel_upgrade(
+                        skel_bytes=content,
+                        resource_name=asset_key,
+                        spine_options=spine_options,
+                        log=log
+                    )
+            replacement_map[asset_key] = content
+        
+        original_tasks_count = len(replacement_map)
+        log(f"找到 {original_tasks_count} 个待处理文件，正在扫描 bundle 并进行替换...")
+
+        # 2. 定义用于在 bundle 中查找资源的 key 生成函数
+        def key_func(obj: UnityPy.classes.Object, data: Any) -> AssetKey | None:
+            if obj.type.name in ["Texture2D", "TextAsset"]:
+                return data.m_Name
+            return None
+
+        # 3. 应用替换
+        replacement_count, _, unmatched_keys = _apply_replacements(env, replacement_map, key_func, log)
+
+        if replacement_count == 0:
+            log("⚠️ 警告: 没有执行任何成功的资源打包。")
+            log("请检查：\n1. 文件名是否与 bundle 内的资源名完全匹配。\n2. bundle 文件是否正确。")
+            return False, "没有找到任何名称匹配的资源进行打包。"
+        
+        log(f"\n打包完成: 成功打包 {replacement_count} / {original_tasks_count} 个资源。")
+
+        # 报告未被打包的文件
+        if unmatched_keys:
+            log("⚠️ 警告: 以下文件未在bundle中找到对应的资源:")
+            # 为了找到原始文件名，我们需要反向查找
+            original_filenames = {
+                f.stem if f.suffix.lower() == '.png' else f.name: f.name for f in input_files
+            }
+            for key in sorted(unmatched_keys):
+                log(f"  - {original_filenames.get(key, key)} (尝试匹配: '{key}')")
+
+        # 4. 保存和修正
+        output_path = output_dir / target_bundle_path.name
+        save_ok, save_message = _save_and_crc(
+            env=env,
+            output_path=output_path,
+            original_bundle_path=target_bundle_path,
+            save_options=save_options,
+            log=log
+        )
+
+        if not save_ok:
+            return False, save_message
+
+        log(f"最终文件已保存至: {output_path}")
+        log(f"\n🎉 处理完成！")
+        return True, f"处理完成！\n成功打包 {replacement_count} 个资源。\n\n文件已保存至工作目录，现在可以点击“覆盖原文件”按钮应用更改。"
+
+    except Exception as e:
+        log(f"\n❌ 严重错误: 处理 bundle 文件时发生错误: {e}")
+        log(traceback.format_exc())
+        return False, f"处理过程中发生严重错误:\n{e}"
 
 def process_asset_extraction(
     bundle_path: Path,
@@ -859,7 +934,7 @@ def _b2b_replace(
         # 3. 根据当前策略应用替换
         log("  > 向新版 bundle 写入资源...")
         
-        replacement_count, replaced_logs \
+        replacement_count, replaced_logs, _ \
         = _apply_replacements(new_env, old_assets_map, key_func, log)
         
         # 4. 如果当前策略成功替换了至少一个资源，就结束
@@ -874,215 +949,6 @@ def _b2b_replace(
     # 5. 所有策略都失败了
     log(f"\n⚠️ 警告: 所有匹配策略均未能在新版 bundle 中找到可替换的资源 ({', '.join(asset_types_to_replace)})。")
     return None, 0
-
-
-def get_filename_prefix(filename: str, log: LogFunc = no_log) -> tuple[str | None, str]:
-    """
-    从旧版Mod文件名中提取用于搜索新版文件的前缀。
-    返回 (前缀字符串, 状态消息) 的元组。
-    """
-    # 1. 通过日期模式确定文件名位置
-    date_match = re.search(r'\d{4}-\d{2}-\d{2}', filename)
-    if not date_match:
-        msg = f"无法在文件名 '{filename}' 中找到日期模式 (YYYY-MM-DD)，无法确定用于匹配的文件前缀。"
-        log(f"  > 失败: {msg}")
-        return None, msg
-
-    # 2. 向前查找可能的日服额外文件名部分
-    prefix_end_index = date_match.start()
-    
-    # 查找日期模式之前的最后一个连字符分隔的部分
-    # 例如在 "...-textures-YYYY-MM-DD..." 中的 "textures"
-    before_date = filename[:prefix_end_index]
-    
-    # 如果日期模式前有连字符，尝试提取最后一个部分
-    if before_date.endswith('-'):
-        before_date = before_date[:-1]  # 移除末尾的连字符
-    
-    # 分割并获取最后一个部分
-    parts = before_date.split('-')
-    last_part = parts[-1] if parts else ''
-    
-    # 检查最后一个部分是否是日服版额外的资源类型
-    resource_types = ['textures', 'assets', 'textassets', 'materials',
-        "animationclip", "audio", "meshes", "prefabs", "timelines"
-    ]
-    
-    if last_part.lower() in resource_types:
-        # 如果找到了资源类型，则前缀不应该包含这个部分
-        search_prefix = before_date.replace(f'-{last_part}', '') + '-'
-    else:
-        search_prefix = filename[:prefix_end_index]
-
-    return search_prefix, "前缀提取成功"
-
-def find_jp_bundle_by_type(
-    source_jp_path: Path,
-    target_type: Literal['textassets', 'textures'],
-    search_dirs: Path | list[Path],
-    log: LogFunc = no_log,
-) -> Path | None:
-    """
-    根据一个日服bundle文件，查找指定类型的对应文件。
-    例如，根据 textassets 文件查找对应的 textures 文件。
-
-    Args:
-        source_jp_path: 已知的日服bundle文件路径。
-        target_type: 要查找的文件类型 ('textassets' 或 'textures')。
-        search_dirs: 用于查找的目录列表。
-        log: 日志记录函数。
-
-    Returns:
-        找到的对应文件的路径，如果未找到则返回 None。
-    """
-    if isinstance(search_dirs, Path):
-        search_dirs = [search_dirs]
-
-    # 使用 get_filename_prefix 获取通用的文件名前缀
-    prefix, prefix_message = get_filename_prefix(source_jp_path.name, log)
-    if not prefix:
-        log(f"  > ❌ 查找失败: {prefix_message}")
-        return None
-    log(f"  > 使用文件前缀: '{prefix}'")
-    target_keyword = f'-{target_type}-'
-
-    if target_keyword in source_jp_path.name:
-        log(f"  > 源文件已是 '{target_type}' 类型。")
-        return source_jp_path
-
-    # 在所有搜索目录中查找匹配的文件
-    for search_dir in search_dirs:
-        if not (search_dir.exists() and search_dir.is_dir()):
-            continue
-        
-        for file_path in search_dir.iterdir():
-            # 检查文件是否以通用前缀开头，并包含目标类型的关键词
-            if file_path.is_file() and file_path.name.startswith(prefix) and target_keyword in file_path.name:
-                log(f"  ✅ 成功找到: {file_path}")
-                return file_path
-    
-    log("  > ❌ 未能找到匹配的文件。")
-    return None
-
-def find_jp_counterparts(
-    global_bundle_path: Path,
-    search_dirs: list[Path],
-    log: LogFunc = no_log,
-) -> tuple[Path | None, Path | None]:
-    """
-    根据国际服bundle文件，查找其对应的日服 TextAsset 和 Texture2D bundle 文件。
-
-    Args:
-        global_bundle_path: 国际服bundle文件的路径。
-        search_dirs: 用于查找的目录列表。
-        log: 日志记录函数。
-
-    Returns:
-        一个元组 (jp_text_path, jp_tex2d_path)，未找到则为 None。
-    """
-    log(f"正在为 '{global_bundle_path.name}' 搜索对应的JP文件...")
-
-    # 1. 从国际服文件名提取前缀
-    prefix, prefix_message = get_filename_prefix(global_bundle_path.name, log)
-    if not prefix:
-        log(f"  > ❌ 查找失败: {prefix_message}")
-        return None, None
-    log(f"  > 使用文件前缀: '{prefix}'")
-
-    jp_text_path: Path | None = None
-    jp_tex2d_path: Path | None = None
-
-    # 2. 在搜索目录中查找匹配前缀且包含特定关键词的文件
-    for search_dir in search_dirs:
-        if not (search_dir.exists() and search_dir.is_dir()):
-            continue
-        
-        for file_path in search_dir.iterdir():
-            if file_path.is_file() and file_path.name.startswith(prefix):
-                if '-textassets-' in file_path.name:
-                    jp_text_path = file_path
-                    log(f"  > 找到JP TextAsset文件: {file_path.name}")
-                elif '-textures-' in file_path.name:
-                    jp_tex2d_path = file_path
-                    log(f"  > 找到JP Texture2D文件: {file_path.name}")
-            
-            # 如果两个都找到了，可以提前结束搜索
-            if jp_text_path and jp_tex2d_path:
-                return jp_text_path, jp_tex2d_path
-
-    return jp_text_path, jp_tex2d_path
-
-def find_new_bundle_path(
-    old_mod_path: Path,
-    game_resource_dir: Path | list[Path],
-    log: LogFunc = no_log,
-) -> tuple[Path | None, str]:
-    """
-    根据旧版Mod文件，在游戏资源目录中智能查找对应的新版文件。
-    支持单个目录路径或目录路径列表。
-    返回 (找到的路径对象, 状态消息) 的元组。
-    """
-    # TODO: 只用Texture2D比较好像不太对，但是it works
-
-    log(f"正在为 '{old_mod_path.name}' 搜索对应文件...")
-
-    # 1. 提取文件名前缀
-    prefix, prefix_message = get_filename_prefix(str(old_mod_path.name), log)
-    if not prefix:
-        return None, prefix_message
-    log(f"  > 文件前缀: '{prefix}'")
-    extension = '.bundle'
-
-    # 2. 处理单个目录或目录列表
-    if isinstance(game_resource_dir, Path):
-        search_dirs = [game_resource_dir]
-    else:
-        search_dirs = game_resource_dir
-
-    # 3. 查找所有候选文件（前缀相同且扩展名一致）
-    candidates: list[Path] = []
-    for search_dir in search_dirs:
-        if search_dir.exists() and search_dir.is_dir():
-            dir_candidates = [f for f in search_dir.iterdir() if f.is_file() and f.name.startswith(prefix) and f.suffix == extension]
-            candidates.extend(dir_candidates)
-    
-    if not candidates:
-        msg = f"在指定目录中未找到任何匹配的文件。"
-        log(f"  > 失败: {msg}")
-        return None, msg
-    log(f"  > 找到 {len(candidates)} 个候选文件，正在验证内容...")
-
-    # 4. 加载旧Mod获取贴图列表
-    old_env = load_bundle(old_mod_path, log)
-    if not old_env:
-        msg = "加载旧版Mod文件失败。"
-        log(f"  > 失败: {msg}")
-        return None, msg
-    
-    old_textures_map = {obj.read().m_Name for obj in old_env.objects if obj.type.name == "Texture2D"}
-    
-    if not old_textures_map:
-        msg = "旧版Mod文件中不包含任何 Texture2D 资源。"
-        log(f"  > 失败: {msg}")
-        return None, msg
-    log(f"  > 旧版Mod包含 {len(old_textures_map)} 个贴图资源。")
-
-    # 5. 遍历候选文件，找到第一个包含匹配贴图的
-    for candidate_path in candidates:
-        log(f"  - 正在检查: {candidate_path.name}")
-        
-        env = load_bundle(candidate_path, log)
-        if not env: continue
-        
-        for obj in env.objects:
-            if obj.type.name == "Texture2D" and obj.read().m_Name in old_textures_map:
-                msg = f"成功确定新版文件: {candidate_path.name}"
-                log(f"  ✅ {msg}")
-                return candidate_path, msg
-    
-    msg = "在所有候选文件中都未找到与旧版Mod贴图名称匹配的资源。无法确定正确的新版文件。"
-    log(f"  > 失败: {msg}")
-    return None, msg
 
 def process_mod_update(
     old_mod_path: Path,
@@ -1237,6 +1103,104 @@ def process_batch_mod_update(
             failed_tasks.append(f"{filename} - {process_message}")
 
     return success_count, fail_count, failed_tasks
+
+# ====== 日服处理相关 ======
+
+def find_jp_bundle_by_type(
+    source_jp_path: Path,
+    target_type: Literal['textassets', 'textures'],
+    search_dirs: Path | list[Path],
+    log: LogFunc = no_log,
+) -> Path | None:
+    """
+    根据一个日服bundle文件，查找指定类型的对应文件。
+    例如，根据 textassets 文件查找对应的 textures 文件。
+
+    Args:
+        source_jp_path: 已知的日服bundle文件路径。
+        target_type: 要查找的文件类型 ('textassets' 或 'textures')。
+        search_dirs: 用于查找的目录列表。
+        log: 日志记录函数。
+
+    Returns:
+        找到的对应文件的路径，如果未找到则返回 None。
+    """
+    if isinstance(search_dirs, Path):
+        search_dirs = [search_dirs]
+
+    # 使用 get_filename_prefix 获取通用的文件名前缀
+    prefix, prefix_message = get_filename_prefix(source_jp_path.name, log)
+    if not prefix:
+        log(f"  > ❌ 查找失败: {prefix_message}")
+        return None
+    log(f"  > 使用文件前缀: '{prefix}'")
+    target_keyword = f'-{target_type}-'
+
+    if target_keyword in source_jp_path.name:
+        log(f"  > 源文件已是 '{target_type}' 类型。")
+        return source_jp_path
+
+    # 在所有搜索目录中查找匹配的文件
+    for search_dir in search_dirs:
+        if not (search_dir.exists() and search_dir.is_dir()):
+            continue
+        
+        for file_path in search_dir.iterdir():
+            # 检查文件是否以通用前缀开头，并包含目标类型的关键词
+            if file_path.is_file() and file_path.name.startswith(prefix) and target_keyword in file_path.name:
+                log(f"  ✅ 成功找到: {file_path}")
+                return file_path
+    
+    log("  > ❌ 未能找到匹配的文件。")
+    return None
+
+def find_jp_counterparts(
+    global_bundle_path: Path,
+    search_dirs: list[Path],
+    log: LogFunc = no_log,
+) -> tuple[Path | None, Path | None]:
+    """
+    根据国际服bundle文件，查找其对应的日服 TextAsset 和 Texture2D bundle 文件。
+
+    Args:
+        global_bundle_path: 国际服bundle文件的路径。
+        search_dirs: 用于查找的目录列表。
+        log: 日志记录函数。
+
+    Returns:
+        一个元组 (jp_text_path, jp_tex2d_path)，未找到则为 None。
+    """
+    log(f"正在为 '{global_bundle_path.name}' 搜索对应的JP文件...")
+
+    # 1. 从国际服文件名提取前缀
+    prefix, prefix_message = get_filename_prefix(global_bundle_path.name, log)
+    if not prefix:
+        log(f"  > ❌ 查找失败: {prefix_message}")
+        return None, None
+    log(f"  > 使用文件前缀: '{prefix}'")
+
+    jp_text_path: Path | None = None
+    jp_tex2d_path: Path | None = None
+
+    # 2. 在搜索目录中查找匹配前缀且包含特定关键词的文件
+    for search_dir in search_dirs:
+        if not (search_dir.exists() and search_dir.is_dir()):
+            continue
+        
+        for file_path in search_dir.iterdir():
+            if file_path.is_file() and file_path.name.startswith(prefix):
+                if '-textassets-' in file_path.name:
+                    jp_text_path = file_path
+                    log(f"  > 找到JP TextAsset文件: {file_path.name}")
+                elif '-textures-' in file_path.name:
+                    jp_tex2d_path = file_path
+                    log(f"  > 找到JP Texture2D文件: {file_path.name}")
+            
+            # 如果两个都找到了，可以提前结束搜索
+            if jp_text_path and jp_tex2d_path:
+                return jp_text_path, jp_tex2d_path
+
+    return jp_text_path, jp_tex2d_path
 
 def process_jp_to_global_conversion(
     global_bundle_path: Path,
